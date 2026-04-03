@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Environment — copy .env.example and fill in values
+.env
+testing/.env
+
+# ADK session data
+.adk/
+testing/.adk/
+**/session.db
+**/artifacts/
+
+# SQLite database (runtime data)
+testing/data.db
+
+# Workspace MCP server — cloned separately from
+# https://github.com/gemini-cli-extensions/workspace
+workspace/
+
+# OS
+.DS_Store
