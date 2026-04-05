@@ -120,9 +120,7 @@ export default function Chat() {
       {/* Sidebar - Optional minimal */}
       <div className="hidden md:flex w-72 bg-slate-950 text-slate-200 flex-col shadow-2xl z-10 border-r border-slate-800">
         <div className="p-6 flex items-center border-b border-slate-800">
-          <div className="h-8 w-8 bg-gradient-to-tr from-blue-600 to-slate-800 rounded-lg mr-3 shadow-lg flex items-center justify-center">
-            <Sparkles className="h-5 w-5 text-white" />
-          </div>
+          <img src="/bot.png" className="h-8 w-8 object-contain drop-shadow-md mr-3" alt="Workspace AI Logo" />
           <h1 className="font-bold text-xl tracking-tight text-white">Workspace AI</h1>
         </div>
         
@@ -156,9 +154,7 @@ export default function Chat() {
         {/* Mobile Header */}
         <div className="md:hidden flex items-center justify-between bg-slate-900 px-4 py-3 border-b border-slate-800 shadow-sm z-10">
           <div className="flex items-center">
-            <div className="h-8 w-8 bg-gradient-to-tr from-blue-600 to-slate-800 rounded-lg mr-3 flex items-center justify-center">
-              <Sparkles className="h-5 w-5 text-slate-100" />
-            </div>
+            <img src="/bot.png" className="h-8 w-8 object-contain drop-shadow-md mr-3" alt="Workspace AI Logo" />
             <h1 className="font-bold text-lg text-slate-100">Workspace AI</h1>
           </div>
           <button onClick={handleLogout} className="p-2 text-slate-500 hover:text-blue-400 transition-colors">
@@ -171,9 +167,7 @@ export default function Chat() {
           
           {chatHistory.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-4">
-              <div className="h-20 w-20 bg-slate-900 rounded-3xl flex items-center justify-center mb-6 shadow-sm border border-slate-800">
-                 <Sparkles className="h-10 w-10 text-blue-500" />
-              </div>
+              <img src="/bot.png" className="h-24 w-24 object-contain drop-shadow-2xl mb-6" alt="Workspace AI Bot" />
               <h2 className="text-2xl font-bold text-slate-100 mb-2">How can I help you today?</h2>
               <p className="text-slate-400 max-w-md">
                 I'm your Google Workspace AI assistant. I can help manage your calendar, draft emails, and access your documents.
@@ -222,7 +216,7 @@ export default function Chat() {
                 disabled={!inputValue.trim() || isSending}
                 isLoading={false}
               >
-                {!isSending ? <Send className="h-5 w-5" /> : <Loader2 className="h-5 w-5 animate-spin" />}
+                {!isSending ? <img src="/sent.png" className="h-6 w-6 object-contain" alt="Send" /> : <Loader2 className="h-5 w-5 animate-spin" />}
               </Button>
             </form>
             <div className="text-center mt-3 text-xs text-gray-400">
