@@ -11,7 +11,7 @@ export function ChatBubble({ message, isUser }) {
       )}
       
       <div className={cn(
-        "max-w-[80%] md:max-w-[70%] rounded-2xl px-5 py-3.5 shadow-sm text-[15px] leading-relaxed",
+        "max-w-[80%] md:max-w-[70%] rounded-2xl px-5 py-3.5 shadow-sm text-[15px] leading-relaxed whitespace-pre-wrap",
         isUser 
           ? "bg-blue-700 text-white rounded-tr-sm" 
           : "bg-slate-900 text-slate-200 border border-slate-800 rounded-tl-sm shadow-md"

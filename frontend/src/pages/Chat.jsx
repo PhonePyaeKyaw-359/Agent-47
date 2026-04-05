@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, LogOut, Loader2, Sparkles } from 'lucide-react';
+import { LogOut, Loader2, Inbox, FileText } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
-import { chatService, authService } from '../services/api';
+import { chatService, authService, gmailService } from '../services/api';
 import { ChatBubble } from '../components/ChatBubble';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -10,6 +10,10 @@ import { Input } from '../components/Input';
 export default function Chat() {
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [triageQuery, setTriageQuery] = useState('in:inbox newer_than:7d');
+  const [summaryQuery, setSummaryQuery] = useState('in:inbox newer_than:14d');
+  const [isTriageLoading, setIsTriageLoading] = useState(false);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   
   const navigate = useNavigate();
   const messagesEndRef = useRef(null);
@@ -105,6 +109,118 @@ export default function Chat() {
     navigate('/');
   };
 
+  const formatTriageResult = (result) => {
+    const triage = result?.triage || {};
+    const totals = result?.totals || {};
+
+    const renderBucket = (name) => {
+      const items = triage[name] || [];
+      if (!items.length) return `- ${name}: none`;
+      const lines = items.slice(0, 6).map((item) => {
+        const score = item?.urgency_score != null ? ` (${item.urgency_score})` : '';
+        const subject = item?.subject || '(no subject)';
+        const from = item?.from ? ` — ${item.from}` : '';
+        return `- ${subject}${score}${from}`;
+      });
+      return [`${name}:`, ...lines].join('\n');
+    };
+
+    return [
+      'Inbox triage complete.',
+      `Analyzed: ${totals.analyzed ?? 'n/a'} | urgent: ${totals.urgent ?? 0} | actionable: ${totals.actionable ?? 0} | fyi: ${totals.fyi ?? 0} | can-wait: ${totals['can-wait'] ?? 0}`,
+      '',
+      renderBucket('urgent'),
+      '',
+      renderBucket('actionable'),
+      '',
+      renderBucket('fyi'),
+      '',
+      renderBucket('can-wait'),
+      result?.notes ? `\nNotes: ${result.notes}` : ''
+    ].join('\n');
+  };
+
+  const formatSummaryResult = (result) => {
+    const summaries = result?.summaries || [];
+    const overall = result?.overall_actions || [];
+
+    const sections = summaries.slice(0, 4).map((thread, idx) => {
+      const facts = (thread?.key_facts || []).slice(0, 3).map((x) => `  - ${x}`).join('\n') || '  - none';
+      const decisions = (thread?.decisions || []).slice(0, 3).map((x) => `  - ${x}`).join('\n') || '  - none';
+      const open = (thread?.open_questions || []).slice(0, 3).map((x) => `  - ${x}`).join('\n') || '  - none';
+      const myNext = (thread?.next_steps_for_me || []).slice(0, 3).map((x) => `  - ${x}`).join('\n') || '  - none';
+      const waiting = (thread?.waiting_on_others || []).slice(0, 3).map((x) => `  - ${x}`).join('\n') || '  - none';
+      return [
+        `${idx + 1}. ${thread?.subject || '(no subject)'}`,
+        `   Thread: ${thread?.thread_id || 'unknown'}`,
+        '   Key facts:',
+        facts,
+        '   Decisions:',
+        decisions,
+        '   Open questions:',
+        open,
+        '   Next steps for me:',
+        myNext,
+        '   Waiting on others:',
+        waiting,
+      ].join('\n');
+    });
+
+    const overallSection = overall.length
+      ? ['Overall actions:', ...overall.slice(0, 6).map((x) => `- ${x}`)].join('\n')
+      : 'Overall actions: none';
+
+    return [
+      `Thread summary complete (${summaries.length} thread(s)).`,
+      '',
+      ...sections,
+      '',
+      overallSection,
+    ].join('\n');
+  };
+
+  const handleInboxTriage = async () => {
+    if (!userId || isTriageLoading || isSummaryLoading || isSending) return;
+    setIsTriageLoading(true);
+    const cmdText = `Run Smart Inbox Triage (${triageQuery})`;
+    addMessage({ text: cmdText, isUser: true, id: Date.now() });
+
+    try {
+      const result = await gmailService.triageInbox(userId, triageQuery, 25, true);
+      addMessage({ text: formatTriageResult(result), isUser: false, id: Date.now() + 1 });
+    } catch (error) {
+      addMessage({
+        text: `Triage failed: ${error.response?.data?.detail?.message || error.response?.data?.detail || error.message}`,
+        isUser: false,
+        id: Date.now() + 1,
+        isError: true,
+      });
+    } finally {
+      setIsTriageLoading(false);
+    }
+  };
+
+  const handleSummarize = async () => {
+    if (!userId || isSummaryLoading || isTriageLoading || isSending) return;
+    setIsSummaryLoading(true);
+    const cmdText = `Run Email Summarizer + Action Extractor (${summaryQuery})`;
+    addMessage({ text: cmdText, isUser: true, id: Date.now() });
+
+    try {
+      const result = await gmailService.summarizeThreads(userId, summaryQuery, 5);
+      addMessage({ text: formatSummaryResult(result), isUser: false, id: Date.now() + 1 });
+    } catch (error) {
+      addMessage({
+        text: `Summarization failed: ${error.response?.data?.detail?.message || error.response?.data?.detail || error.message}`,
+        isUser: false,
+        id: Date.now() + 1,
+        isError: true,
+      });
+    } finally {
+      setIsSummaryLoading(false);
+    }
+  };
+
   if (!isAuthenticated && userId) {
       return (
           <div className="flex h-screen w-full items-center justify-center bg-gray-50">
@@ -133,6 +249,48 @@ export default function Chat() {
                  <span className="text-slate-300">Connected</span>
               </div>
               <p className="text-sm font-medium text-slate-200 truncate" title={userId}>User: {userId}</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-xs uppercase text-slate-500 font-semibold tracking-wider">Gmail Productivity</p>
+
+            <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 space-y-2">
+              <label className="text-xs text-slate-400">Triage Query</label>
+              <Input
+                value={triageQuery}
+                onChange={(e) => setTriageQuery(e.target.value)}
+                className="h-9 text-sm"
+                disabled={isTriageLoading || isSummaryLoading || isSending}
+              />
+              <Button
+                onClick={handleInboxTriage}
+                isLoading={isTriageLoading}
+                disabled={isSummaryLoading || isSending}
+                className="w-full h-9 text-sm"
+              >
+                <Inbox className="h-4 w-4 mr-2" />
+                Smart Inbox Triage
+              </Button>
+            </div>
+
+            <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 space-y-2">
+              <label className="text-xs text-slate-400">Summary Query</label>
+              <Input
+                value={summaryQuery}
+                onChange={(e) => setSummaryQuery(e.target.value)}
+                className="h-9 text-sm"
+                disabled={isSummaryLoading || isTriageLoading || isSending}
+              />
+              <Button
+                onClick={handleSummarize}
+                isLoading={isSummaryLoading}
+                disabled={isTriageLoading || isSending}
+                className="w-full h-9 text-sm"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Summarize + Actions
+              </Button>
             </div>
           </div>
         </div>
