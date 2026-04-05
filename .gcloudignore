@@ -1,0 +1,29 @@
+# This file overrides .gitignore for gcloud source uploads.
+# The workspace/ directory must be included (MCP server source is built in Docker).
+
+# Python
+.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Runtime data — never bake into image
+testing/data.db
+testing/.token_key
+
+# Secrets
+.env
+testing/.env
+
+# Source control
+.git/
+
+# Node — built inside Docker; exclude heavy/generated dirs
+workspace/workspace-server/node_modules/
+workspace/workspace-server/dist/
+workspace/node_modules/
+workspace/logs/
+
+# Misc
+.DS_Store

@@ -1,12 +1,17 @@
 # Workspace AI — Multi-Agent Personal Assistant
 
-A multi-agent AI system built with Google ADK and Gemini that manages tasks, schedules, and notes by coordinating specialist sub-agents across Google Workspace and a local SQLite database.
+A multi-agent AI system built with Google ADK and Gemini that coordinates Google Workspace operations plus local task and note management.
 
 ## Architecture
 
 ```
 orchestrator (root_agent)
 ├── calendar_agent   — Google Calendar via workspace MCP server
+├── gmail_agent      — Gmail search, read, labels, draft, send
+├── chat_agent       — Google Chat spaces, threads, DMs
+├── docs_agent       — Google Docs create/read/edit/format
+├── sheets_agent     — Google Sheets read operations
+├── slides_agent     — Google Slides metadata/text/image review
 ├── tasks_agent      — Task CRUD via SQLite
 └── notes_agent      — Notes CRUD via SQLite
 ```
@@ -90,6 +95,11 @@ API endpoints:
 ## Example prompts
 
 - *"What meetings do I have today?"*
+- *"Find unread emails from this week about Q2 planning"*
+- *"Send a Chat message to the eng standup space: build is green"*
+- *"Create a Google Doc called Weekly Summary with today's highlights"*
+- *"Read range A1:D20 from spreadsheet <sheet_id>"*
+- *"Summarize slide text from presentation <presentation_id>"*
 - *"Create a task: Review PR by Friday, high priority"*
 - *"Schedule a standup tomorrow at 10am with alice@example.com"*
 - *"Save a note: team offsite ideas — tags: work,planning"*

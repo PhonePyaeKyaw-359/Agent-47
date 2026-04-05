@@ -1,29 +1,15 @@
 """Calendar specialist sub-agent."""
 
-import os
-import pathlib
-
 from google.adk import Agent
-from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams, StdioServerParameters
+from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 
 from ..tools.time_tools import get_current_time
+from ..tools.fix_tool_names import make_fix_tool_names_callback
 
-_here = pathlib.Path(__file__).parent.parent
-_workspace_dist = (
-    _here.parent / "workspace" / "workspace-server" / "dist" / "index.js"
-)
 
-workspace_mcp = MCPToolset(
-    connection_params=StdioConnectionParams(
-        server_params=StdioServerParameters(
-            command="node",
-            args=[str(_workspace_dist), "--use-dot-names"],
-            env={**os.environ},
-        )
-    )
-)
-
-calendar_agent = Agent(
+def create_calendar_agent(workspace_mcp: MCPToolset) -> Agent:
+    """Create a Calendar agent wired to a per-user MCPToolset."""
+    return Agent(
     model="gemini-2.5-flash",
     name="calendar_agent",
     description=(
@@ -43,6 +29,8 @@ calendar_agent = Agent(
         "  'calendar.respondToEvent'  — accept / decline / tentative an invite\n"
         "  'calendar.findFreeTime'    — find a free slot across attendees\n"
         "  'calendar.list'            — list all calendars\n\n"
+        "CRITICAL: ALWAYS use the FULL dotted tool name (e.g. 'calendar.listEvents', "
+        "NOT 'listEvents'). A bare name will fail. Every calendar tool call MUST start with 'calendar.'.\n\n"
         "RULES:\n"
         "  - Always pass calendarId='primary' unless the user specifies otherwise.\n"
         "  - Build datetimes using the UTC offset from get_current_time, "
@@ -50,5 +38,6 @@ calendar_agent = Agent(
         "  - Preview new events and wait for user confirmation before calling createEvent.\n"
         "  - Return a clear, concise summary to the orchestrator."
     ),
-    tools=[get_current_time, workspace_mcp],
-)
+        tools=[get_current_time, workspace_mcp],
+        after_model_callback=make_fix_tool_names_callback("calendar"),
+    )

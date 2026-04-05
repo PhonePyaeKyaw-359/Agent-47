@@ -1,0 +1,2 @@
+PROJECT_ID=$(gcloud config get-value project)
+REGION=asia-southeast1   # change to your preferred region

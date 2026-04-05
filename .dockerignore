@@ -1,0 +1,33 @@
+# Python
+.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Runtime data (SQLite DB + Fernet key — never bake into image)
+testing/data.db
+testing/.token_key
+
+# Secrets
+.env
+testing/.env
+
+# Source control
+.git/
+.gitignore
+
+# Node — node_modules and build output are generated inside the image
+workspace/workspace-server/node_modules/
+workspace/workspace-server/dist/
+workspace/node_modules/
+workspace/logs/
+
+# Misc
+*.md
+docs/
+testing/skills/
+workspace/skills/
+workspace/commands/
+workspace/scripts/
+workspace/cloud_function/
