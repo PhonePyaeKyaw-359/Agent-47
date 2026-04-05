@@ -11,6 +11,7 @@ Handles:
 
 import base64
 import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -84,6 +85,8 @@ def _get_fernet_key() -> bytes:
 
 
 _FERNET_KEY = _get_fernet_key()
+# Raw 32-byte key used for HMAC (same secret, just decoded)
+_HMAC_KEY = base64.urlsafe_b64decode(_FERNET_KEY)
 
 
 def _encrypt(plaintext: str) -> str:
@@ -222,6 +225,43 @@ def _cleanup_stale_states(max_age_s: float = 600) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Stateless CSRF helpers — no DB required, survives restarts / DB wipes
+# ---------------------------------------------------------------------------
+
+
+def _make_stateless_csrf(user_id: str) -> str:
+    """Return a self-verifying token that encodes *user_id*.
+
+    Format: ``<user_b64>.<nonce>.<hmac_sig>``
+    The HMAC signs ``user_b64.nonce`` with the installation secret so the
+    token cannot be forged and the user_id can be recovered without any DB.
+    """
+    nonce = secrets.token_hex(16)
+    user_b64 = base64.urlsafe_b64encode(user_id.encode()).decode().rstrip("=")
+    payload = f"{user_b64}.{nonce}"
+    sig = hmac.new(_HMAC_KEY, payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}.{sig}"
+
+
+def _verify_stateless_csrf(token: str) -> Optional[str]:
+    """Verify a stateless CSRF token and return *user_id*, or None if invalid."""
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    user_b64, nonce, sig = parts
+    payload = f"{user_b64}.{nonce}"
+    expected = hmac.new(_HMAC_KEY, payload.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return None
+    # Restore base64 padding
+    padded = user_b64 + "=" * (-len(user_b64) % 4)
+    try:
+        return base64.urlsafe_b64decode(padded).decode()
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # OAuth URL generation
 # ---------------------------------------------------------------------------
 
@@ -237,18 +277,14 @@ def generate_login_url(user_id: str, callback_url: str) -> str:
     Returns:
         The URL the user should visit to grant permissions.
     """
-    _cleanup_stale_states()
-
-    csrf = secrets.token_hex(32)
+    # Stateless: user_id is encoded inside the CSRF token itself — no DB write needed.
+    csrf = _make_stateless_csrf(user_id)
     state_payload = {
         "uri": callback_url,
         "manual": False,
         "csrf": csrf,
     }
     state_b64 = base64.b64encode(json.dumps(state_payload).encode()).decode()
-
-    # Store mapping so callback can look up user_id and verify csrf
-    _save_oauth_state(csrf, user_id, csrf)
 
     params = {
         "client_id": _get_client_id(),
@@ -277,11 +313,10 @@ def process_oauth_callback(
     state_csrf: str,
 ) -> str:
     """Validate the CSRF state and store tokens.  Returns the user_id."""
-    record = _pop_oauth_state(state_csrf)
-    if record is None:
+    user_id = _verify_stateless_csrf(state_csrf)
+    if user_id is None:
         raise ValueError("Invalid or expired OAuth state — possible CSRF attack.")
 
-    user_id = record["user_id"]
     tokens = {
         "access_token": access_token,
         "refresh_token": refresh_token,
