@@ -53,6 +53,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # at module-load time, which traverses up from __dirname looking for this file.
 # Without it the Node.js process throws before the MCP handshake can happen.
 COPY --from=mcp-builder /build/gemini-extension.json workspace/gemini-extension.json
+COPY --from=mcp-builder /build/node_modules/ workspace/node_modules/
 COPY --from=mcp-builder /build/workspace-server/dist/ workspace/workspace-server/dist/
 
 # ── Application source ───────────────────────────────────────────────────────
