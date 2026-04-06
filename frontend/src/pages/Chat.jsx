@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Loader2, Inbox, FileText, Send, Zap } from 'lucide-react';
+import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { chatService, authService, gmailService } from '../services/api';
 import { ChatBubble } from '../components/ChatBubble';
@@ -58,12 +58,20 @@ export default function Chat() {
 
   const userId          = useAuthStore((s) => s.userId);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const chatHistory     = useAuthStore((s) => s.chatHistory);
-  const sessionId       = useAuthStore((s) => s.sessionId);
-  const addMessage      = useAuthStore((s) => s.addMessage);
-  const logout          = useAuthStore((s) => s.logout);
-  const setAuthenticated = useAuthStore((s) => s.setAuthenticated);
-  const setSessionId    = useAuthStore((s) => s.setSessionId);
+  
+  const sessions        = useAuthStore((s) => s.sessions) || [];
+  const activeSessionId = useAuthStore((s) => s.activeSessionId);
+  const activeSession   = sessions.find(s => s.id === activeSessionId) || null;
+  const chatHistory     = activeSession ? activeSession.messages : [];
+  const sessionId       = activeSessionId;
+
+  const addMessage          = useAuthStore((s) => s.addMessage);
+  const createNewSession    = useAuthStore((s) => s.createNewSession);
+  const setActiveSession    = useAuthStore((s) => s.setActiveSession);
+  const updateSessionId     = useAuthStore((s) => s.updateSessionId);
+
+  const logout             = useAuthStore((s) => s.logout);
+  const setAuthenticated   = useAuthStore((s) => s.setAuthenticated);
 
   /* Auth guard */
   useEffect(() => {
@@ -141,8 +149,10 @@ export default function Chat() {
     setInputValue('');
     setIsSending(true);
     try {
-      const response = await chatService.runAgent(userId, inputValue.trim(), sessionId);
-      if (response.session_id) setSessionId(response.session_id);
+      const response = await chatService.runAgent(userId, inputValue.trim(), sessionId || "");
+      if (response.session_id && response.session_id !== sessionId) {
+        updateSessionId(sessionId, response.session_id);
+      }
       addMessage({ text: response.response, isUser: false, id: Date.now() + 1 });
     } catch (error) {
       addMessage({
@@ -199,59 +209,99 @@ export default function Chat() {
       <aside className="hidden md:flex w-64 flex-col bg-bg-surface border-r border-border shrink-0">
 
         {/* Logo */}
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
-          <div className="h-7 w-7 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
-            <Zap className="h-3.5 w-3.5 text-accent" />
+        <div className="flex items-center gap-2.5 px-5 py-6">
+          <div className="h-7 w-7 rounded-lg overflow-hidden shrink-0">
+            <img src="/bot.png" alt="Workspace AI Logo" className="h-full w-full object-cover" />
           </div>
-          <span className="text-sm font-semibold text-ink-primary tracking-tight">Workspace AI</span>
+          <span className="text-[15px] font-bold text-white tracking-tight">Workspace AI</span>
+        </div>
+
+        {/* User Card */}
+        <div className="px-4 mb-3">
+          <div className="bg-bg-card border border-border mt-1 rounded-[14px] px-3 py-2.5 flex items-center gap-3">
+             <div className="h-8 w-8 rounded-full overflow-hidden shrink-0 border border-border">
+               <img src="/user.png" alt="User" className="h-full w-full object-cover" />
+             </div>
+             <div className="flex flex-col min-w-0">
+               <p className="text-[12px] text-white font-medium truncate" title={userId}>{userId}</p>
+               <div className="flex items-center gap-1.5 mt-0.5">
+                 <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" style={{ boxShadow: '0 0 6px #3b82f6' }}/>
+                 <span className="text-[10px] text-ink-secondary leading-none mt-px">Connected</span>
+               </div>
+             </div>
+          </div>
+        </div>
+
+        {/* New Chat Button */}
+        <div className="px-4 mb-5">
+          <button 
+            onClick={createNewSession}
+            className="w-full bg-accent text-white py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-accent-dim transition-colors"
+          >
+            <span className="text-xl leading-none font-normal" style={{ marginTop: '-2px' }}>+</span> New Chat
+          </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-
-          {/* Session */}
-          <SideSection label="Session">
-            <div className="bg-bg-card border border-border rounded-xl px-3 py-2.5 flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <p className="text-xs text-ink-secondary truncate" title={userId}>{userId}</p>
+        <div className="flex-1 overflow-y-auto px-4 space-y-6">
+          
+          <SideSection label="RECENT CHATS">
+             <div className="space-y-1">
+              {sessions.map(s => (
+                <div 
+                  key={s.id}
+                  onClick={() => setActiveSession(s.id)}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors text-[13px] ${s.id === activeSessionId ? 'bg-bg-card border border-border text-white font-medium' : 'text-ink-secondary hover:bg-bg-card hover:text-white border border-transparent'}`}
+                >
+                  <MessageSquare className={`w-4 h-4 shrink-0 ${s.id === activeSessionId ? 'text-accent' : ''}`} /> 
+                  <span className="truncate">{s.title || 'New Chat'}</span>
+                </div>
+              ))}
+              {sessions.length === 0 && (
+                <div className="px-3 py-2.5 text-xs text-ink-muted">No recent chats</div>
+              )}
             </div>
           </SideSection>
 
-          {/* Gmail tools */}
-          <SideSection label="Gmail Tools">
-            <div className="space-y-2">
-              <ToolCard
-                label="Triage Query"
-                queryValue={triageQuery}
-                onQueryChange={(e) => setTriageQuery(e.target.value)}
-                onRun={handleInboxTriage}
-                isRunning={isTriageLoading}
-                isDisabled={isSummaryLoading || isSending}
-                icon={Inbox}
-                btnLabel="Smart Triage"
-              />
-              <ToolCard
-                label="Summary Query"
-                queryValue={summaryQuery}
-                onQueryChange={(e) => setSummaryQuery(e.target.value)}
-                onRun={handleSummarize}
-                isRunning={isSummaryLoading}
-                isDisabled={isTriageLoading || isSending}
-                icon={FileText}
-                btnLabel="Summarize"
-              />
-            </div>
-          </SideSection>
+          {/* Gmail tools hidden by default under details so it doesnt clutter the UI */}
+          <details className="group pb-4">
+             <summary className="text-[10px] uppercase tracking-widest text-ink-muted font-semibold px-0.5 mb-1.5 cursor-pointer hover:text-ink-secondary transition-colors list-none flex items-center justify-between">
+                GMAIL TOOLS
+             </summary>
+             <div className="space-y-2 mt-2">
+               <ToolCard
+                 label="Triage Query"
+                 queryValue={triageQuery}
+                 onQueryChange={(e) => setTriageQuery(e.target.value)}
+                 onRun={handleInboxTriage}
+                 isRunning={isTriageLoading}
+                 isDisabled={isSummaryLoading || isSending}
+                 icon={Inbox}
+                 btnLabel="Smart Triage"
+               />
+               <ToolCard
+                 label="Summary Query"
+                 queryValue={summaryQuery}
+                 onQueryChange={(e) => setSummaryQuery(e.target.value)}
+                 onRun={handleSummarize}
+                 isRunning={isSummaryLoading}
+                 isDisabled={isTriageLoading || isSending}
+                 icon={FileText}
+                 btnLabel="Summarize"
+               />
+             </div>
+          </details>
+
         </div>
 
         {/* Sign out */}
-        <div className="px-3 py-3 border-t border-border">
+        <div className="p-4 mt-2">
           <Button
             variant="ghost"
-            className="w-full justify-start text-xs gap-2 text-ink-secondary"
+            className="w-full justify-start text-[13px] gap-2.5 text-ink-secondary hover:text-white px-2 hover:bg-transparent"
             onClick={handleLogout}
           >
-            <LogOut className="h-3.5 w-3.5" />
+            <LogOut className="h-4 w-4" />
             Sign Out
           </Button>
         </div>
@@ -263,8 +313,8 @@ export default function Chat() {
         {/* Mobile header */}
         <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-bg-surface">
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center">
-              <Zap className="h-3.5 w-3.5 text-accent" />
+            <div className="h-7 w-7 rounded-lg overflow-hidden shrink-0">
+              <img src="/bot.png" alt="Workspace AI Logo" className="h-full w-full object-cover" />
             </div>
             <span className="text-sm font-semibold">Workspace AI</span>
           </div>
@@ -279,15 +329,15 @@ export default function Chat() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
           {chatHistory.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center px-4 animate-fade-in-up">
-              <div className="h-14 w-14 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
-                <Zap className="h-6 w-6 text-accent" />
+            <div className="h-full flex flex-col items-center justify-center text-center px-4 animate-fade-in-up pb-[10vh]">
+              <div className="h-[68px] w-[68px] rounded-full mb-6 overflow-hidden flex items-center justify-center bg-[#00d4d4]">
+                <img src="/bot.png" alt="Workspace AI Logo" className="h-full w-full object-cover" />
               </div>
-              <h2 className="text-lg font-semibold text-ink-primary mb-1">
+              <h2 className="text-[26px] font-bold text-white mb-2 tracking-tight">
                 How can I help you today?
               </h2>
-              <p className="text-sm text-ink-secondary max-w-xs">
-                Your Google Workspace AI assistant. Manage calendar, draft emails, and access documents.
+              <p className="text-[15px] text-ink-secondary max-w-[420px] leading-relaxed">
+                I'm your Google Workspace AI assistant. I can help manage your calendar, draft emails, and access your documents.
               </p>
             </div>
           ) : (
@@ -321,35 +371,38 @@ export default function Chat() {
         </div>
 
         {/* Input bar */}
-        <div className="px-4 md:px-8 py-4 border-t border-border bg-bg-base/60 backdrop-blur-sm">
-          <div className="max-w-3xl mx-auto">
-            <form onSubmit={handleSend} className="relative flex items-center gap-2">
-              <Input
-                ref={inputRef}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Ask me anything…"
-                className="flex-1 h-11 text-sm"
-                disabled={isSending}
-              />
-              <button
-                type="submit"
-                disabled={!inputValue.trim() || isSending}
-                className={[
-                  "h-11 w-11 shrink-0 rounded-xl flex items-center justify-center",
-                  "bg-accent text-bg-base transition-all duration-200",
-                  "hover:opacity-90 hover:shadow-glow-sm active:scale-95",
-                  "disabled:opacity-30 disabled:pointer-events-none",
-                ].join(' ')}
-              >
-                {isSending
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <Send className="h-4 w-4" />
-                }
-              </button>
+        <div className="px-4 md:px-8 pb-8 pt-2 bg-transparent">
+          <div className="max-w-4xl mx-auto">
+            <form onSubmit={handleSend} className="relative flex items-center w-full">
+              <div className="flex-1 flex items-center bg-bg-card rounded-2xl border border-border h-[64px] pl-6 pr-2 focus-within:border-accent/50 shadow-sm transition-colors">
+                <input
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Ask me anything..."
+                  className="flex-1 bg-transparent border-none focus:outline-none text-white text-[15px] placeholder:text-ink-secondary/70 h-full w-full"
+                  disabled={isSending}
+                />
+                <button
+                  type="submit"
+                  disabled={!inputValue.trim() || isSending}
+                  className={[
+                    "h-12 w-12 shrink-0 flex items-center justify-center mr-2",
+                    "text-ink-secondary transition-all duration-200 bg-transparent cursor-pointer",
+                    "hover:text-accent hover:scale-105 active:scale-95",
+                    "disabled:opacity-30 disabled:pointer-events-none disabled:cursor-default",
+                  ].join(' ')}
+                >
+                  {isSending ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Send className="h-5 w-5 ml-0.5" />
+                  )}
+                </button>
+              </div>
             </form>
-            <p className="text-center mt-2 text-[11px] text-ink-muted">
-              Workspace AI can make mistakes — always verify important information.
+            <p className="text-center mt-3 text-[11px] text-ink-muted leading-tight">
+              Workspace AI can make mistakes. Verify important information.
             </p>
           </div>
         </div>

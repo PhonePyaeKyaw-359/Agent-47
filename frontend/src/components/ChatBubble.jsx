@@ -10,8 +10,8 @@ export function ChatBubble({ message, isUser, isError }) {
 
       {/* AI Avatar */}
       {!isUser && (
-        <div className="flex-shrink-0 h-8 w-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mr-3 mt-0.5">
-          <span className="text-accent font-semibold text-xs tracking-wider">AI</span>
+        <div className="flex-shrink-0 h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center mr-3 mt-0.5">
+          <img src="/bot.png" alt="AI" className="h-full w-full object-cover" />
         </div>
       )}
 
@@ -29,8 +29,8 @@ export function ChatBubble({ message, isUser, isError }) {
 
       {/* User Avatar */}
       {isUser && (
-        <div className="flex-shrink-0 h-8 w-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center ml-3 mt-0.5">
-          <span className="text-accent font-semibold text-xs">U</span>
+        <div className="flex-shrink-0 h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center ml-3 mt-0.5">
+          <img src="/user.png" alt="User" className="h-full w-full object-cover" />
         </div>
       )}
     </div>
