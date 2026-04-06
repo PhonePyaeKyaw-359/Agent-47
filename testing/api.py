@@ -631,12 +631,15 @@ async def run(request: RunRequest):
 
     # Email guardrail: remind agent never to invent recipient addresses
     message_text = request.message
-    if _detect_email_compose_intent(message_text) and not _email_style_specified(message_text):
+    if _detect_email_compose_intent(message_text):
         message_text = (
-            "[POLICY] If the recipient email address is not in the user's message, "
-            "ask for it once (combined with style choice). "
+            "[POLICY] To compose an email you need exactly three things from the user: "
+            "(1) the recipient's real email address, "
+            "(2) the reason/purpose of the email, "
+            "(3) what nickname to use for the recipient. "
+            "Ask for ALL missing items in one numbered list. "
             "NEVER invent placeholder addresses. "
-            "Do not ask for body/subject separately — infer from context.\n\n"
+            "Do not ask for subject or body separately.\n\n"
             + message_text
         )
     content = Content(role="user", parts=[Part(text=message_text)])
