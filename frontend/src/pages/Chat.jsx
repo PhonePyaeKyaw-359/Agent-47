@@ -450,7 +450,7 @@ export default function Chat() {
                     color: '#34d399',
                     bg: 'rgba(52,211,153,0.07)',
                     border: 'rgba(52,211,153,0.22)',
-                    prompt: `Schedule a collaborative meeting on my Calendar. \n Title: \n Date and Specific Time: \n Who are the collaborators to invite?: No One \n Any shared docs or agenda links from your docs you wanna attach?: None \n Meeting Link? [1. Auto-generate Meet, 2. Physical]: \n You can find the document yourself in my google docs`,
+                    prompt: `Schedule a collaborative meeting on my Calendar. \n Title: \n Date and Specific Time: \n Who are the collaborators to invite?: No One \n Any shared docs or agenda links from your docs you wanna attach?: None \n Meeting Link? [1. Auto-generate Meet, 2. Physical]:`,
                   },
                 ].map(({ icon: Icon, label, desc, color, bg, border, prompt }) => (
                   <button
