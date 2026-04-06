@@ -52,6 +52,7 @@ export default function Chat() {
   const [isTriageLoading, setIsTriageLoading] = useState(false);
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState('');
   const recognitionRef = useRef(null); // holds MediaRecorder instance
   const wsRef = useRef(null);          // holds WebSocket for streaming STT
@@ -228,45 +229,39 @@ export default function Chat() {
     const ws = new WebSocket(`${WS_BASE_URL}/ws/speech`);
     wsRef.current = ws;
 
-    // Accumulate final segments (interim are shown for visual feedback only)
-    let finalAccumulated = '';
+    let lastTranscript = '';
 
     ws.onmessage = async (event) => {
       let data;
       try { data = JSON.parse(event.data); } catch { return; }
 
       if (data.type === 'error') {
+        setIsTranscribing(false);
         setVoiceError(`Speech error: ${data.message}`);
-        setTimeout(() => setVoiceError(''), 4000);
+        setTimeout(() => setVoiceError(''), 5000);
         ws.close();
-        stream.getTracks().forEach((t) => t.stop());
         return;
       }
 
-      if (data.type === 'interim') {
-        // Live preview: show current interim appended to locked final segments
-        setInputValue(
-          (finalAccumulated ? finalAccumulated + ' ' : '') + data.transcript
-        );
-      } else if (data.type === 'final') {
-        finalAccumulated += (finalAccumulated ? ' ' : '') + data.transcript.trim();
-        setInputValue(finalAccumulated);
+      if (data.type === 'final') {
+        lastTranscript = (data.transcript || '').trim();
+        setInputValue(lastTranscript);
       } else if (data.type === 'done') {
+        setIsTranscribing(false);
         ws.close();
-        const transcript = finalAccumulated.trim();
-        if (!transcript) {
+        if (!lastTranscript) {
           setInputValue('');
           setVoiceError('No speech detected. Please try again.');
           setTimeout(() => setVoiceError(''), 3000);
           return;
         }
         // Auto-send
-        const userMessage = { text: transcript, isUser: true, id: Date.now() };
+        const userMessage = { text: lastTranscript, isUser: true, id: Date.now() };
         addMessage(userMessage);
         setInputValue('');
         setIsSending(true);
         try {
-          const response = await chatService.runAgent(userId, transcript, sessionId || '');
+          const response = await chatService.runAgent(userId, lastTranscript, sessionId || '');
           if (response.session_id && response.session_id !== sessionId) {
             updateSessionId(sessionId, response.session_id);
           }
@@ -284,6 +279,7 @@ export default function Chat() {
 
     ws.onerror = () => {
       setIsRecording(false);
+      setIsTranscribing(false);
       setVoiceError('WebSocket connection failed. Please try again.');
       setTimeout(() => setVoiceError(''), 3000);
       stream.getTracks().forEach((t) => t.stop());
@@ -316,16 +312,19 @@ export default function Chat() {
       recorder.onstart = () => setIsRecording(true);
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
+        setIsRecording(false);
+        setIsTranscribing(true);
         if (ws.readyState === WebSocket.OPEN) ws.send('DONE');
       };
       recorder.onerror = () => {
         setIsRecording(false);
+        setIsTranscribing(false);
         setVoiceError('Recording error. Please try again.');
         setTimeout(() => setVoiceError(''), 3000);
         ws.close();
       };
 
-      // Stream 250 ms chunks for real-time feel; auto-stop after 30 s
+      // Collect 250ms chunks; auto-stop after 30 s
       recorder.start(250);
       setTimeout(() => {
         if (recorder.state === 'recording') recorder.stop();
@@ -600,7 +599,7 @@ export default function Chat() {
                       handleSend(e);
                     }
                   }}
-                  placeholder={isRecording ? 'Listening…' : 'Ask me anything...'}
+                  placeholder={isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : 'Ask me anything...'}
                   rows={1}
                   className="flex-1 bg-transparent border-none focus:outline-none text-white text-[15px] placeholder:text-ink-secondary/70 w-full resize-none overflow-y-auto leading-relaxed"
                   style={{ minHeight: '28px', maxHeight: '180px' }}
