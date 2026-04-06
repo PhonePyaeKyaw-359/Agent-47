@@ -38,6 +38,29 @@ from .tools.user_auth import (
 APP_NAME = "agent47"
 session_service = InMemorySessionService()
 
+# ---------------------------------------------------------------------------
+# Email compose intent detection — drives style-selection guardrail
+# ---------------------------------------------------------------------------
+_EMAIL_COMPOSE_VERBS = (
+    "send email", "send an email", "compose email", "write email",
+    "draft email", "email to", "send a message to", "write a message to",
+    "write me an email", "create an email", "create email",
+)
+_EMAIL_STYLE_TOKENS = (
+    "normal", "office", "decorated", "formal", "casual", "html email",
+    "plain text", "style 1", "style 2", "style 3",
+)
+
+
+def _detect_email_compose_intent(message: str) -> bool:
+    lower = message.lower()
+    return any(kw in lower for kw in _EMAIL_COMPOSE_VERBS)
+
+
+def _email_style_specified(message: str) -> bool:
+    lower = message.lower()
+    return any(token in lower for token in _EMAIL_STYLE_TOKENS)
+
 # Per-user Runner cache  (user_id → Runner)
 _user_runners: dict[str, Runner] = {}
 
@@ -606,7 +629,17 @@ async def run(request: RunRequest):
             session_id=session_id,
         )
 
-    content = Content(role="user", parts=[Part(text=request.message)])
+    # Email style-selection guardrail
+    message_text = request.message
+    if _detect_email_compose_intent(message_text) and not _email_style_specified(message_text):
+        message_text = (
+            "[AGENT47 POLICY] Before composing this email, gmail_agent MUST ask "
+            "the user to choose a style: 1=Normal (casual plain text), "
+            "2=Office (formal plain text), 3=Decorated (rich HTML). "
+            "Do NOT compose or send until the user picks a style and confirms.\n\n"
+            + message_text
+        )
+    content = Content(role="user", parts=[Part(text=message_text)])
     final_response = ""
 
     try:
