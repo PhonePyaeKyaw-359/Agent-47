@@ -633,10 +633,13 @@ async def run(request: RunRequest):
     message_text = request.message
     if _detect_email_compose_intent(message_text) and not _email_style_specified(message_text):
         message_text = (
-            "[AGENT47 POLICY] Before composing this email, gmail_agent MUST ask "
-            "the user to choose a style: 1=Normal (casual plain text), "
-            "2=Office (formal plain text), 3=Decorated (rich HTML). "
-            "Do NOT compose or send until the user picks a style and confirms.\n\n"
+            "[AGENT47 POLICY] Before composing this email, gmail_agent MUST: "
+            "(1) Ask for the recipient's REAL email address if not already provided — "
+            "NEVER invent or use placeholder addresses like 'johndoe@example.com'. "
+            "(2) Ask for subject and content if missing. "
+            "(3) Only after having a real email address, ask the user to choose a style: "
+            "1=Normal (casual plain text), 2=Office (formal plain text), 3=Decorated (rich HTML). "
+            "Do NOT compose or send until all info is confirmed.\n\n"
             + message_text
         )
     content = Content(role="user", parts=[Part(text=message_text)])
