@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare } from 'lucide-react';
+import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare, Trash2 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { chatService, authService, gmailService } from '../services/api';
 import { ChatBubble } from '../components/ChatBubble';
@@ -248,13 +248,20 @@ export default function Chat() {
           <SideSection label="RECENT CHATS">
              <div className="space-y-1">
               {sessions.map(s => (
-                <div 
+                <div
                   key={s.id}
                   onClick={() => setActiveSession(s.id)}
-                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors text-[13px] ${s.id === activeSessionId ? 'bg-bg-card border border-border text-white font-medium' : 'text-ink-secondary hover:bg-bg-card hover:text-white border border-transparent'}`}
+                  className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors text-[13px] ${s.id === activeSessionId ? 'bg-bg-card border border-border text-white font-medium' : 'text-ink-secondary hover:bg-bg-card hover:text-white border border-transparent'}`}
                 >
-                  <MessageSquare className={`w-4 h-4 shrink-0 ${s.id === activeSessionId ? 'text-accent' : ''}`} /> 
-                  <span className="truncate">{s.title || 'New Chat'}</span>
+                  <MessageSquare className={`w-4 h-4 shrink-0 ${s.id === activeSessionId ? 'text-accent' : ''}`} />
+                  <span className="truncate flex-1">{s.title || 'New Chat'}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); useAuthStore.getState().deleteSession(s.id); }}
+                    className="ml-auto opacity-0 group-hover:opacity-100 text-ink-muted hover:text-red-400 transition-all duration-150 p-0.5 rounded cursor-pointer shrink-0"
+                    title="Delete chat"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))}
               {sessions.length === 0 && (
@@ -386,17 +393,12 @@ export default function Chat() {
                 <button
                   type="submit"
                   disabled={!inputValue.trim() || isSending}
-                  className={[
-                    "h-12 w-12 shrink-0 flex items-center justify-center mr-2",
-                    "text-ink-secondary transition-all duration-200 bg-transparent cursor-pointer",
-                    "hover:text-accent hover:scale-105 active:scale-95",
-                    "disabled:opacity-30 disabled:pointer-events-none disabled:cursor-default",
-                  ].join(' ')}
+                  className="send-btn"
                 >
                   {isSending ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#3b82f6' }} />
                   ) : (
-                    <Send className="h-5 w-5 ml-0.5" />
+                    <Send className="h-5 w-5" />
                   )}
                 </button>
               </div>
