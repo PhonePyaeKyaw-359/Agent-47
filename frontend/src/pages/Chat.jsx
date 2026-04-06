@@ -423,7 +423,7 @@ export default function Chat() {
               </p>
 
               {/* Quick Action Cards */}
-              <div className="grid grid-cols-1 gap-3 w-full max-w-[480px]">
+              <div className="flex flex-row gap-3 justify-center w-full max-w-[620px]">
                 {[
                   {
                     icon: Mail,
@@ -432,7 +432,7 @@ export default function Chat() {
                     color: '#3b82f6',
                     bg: 'rgba(59,130,246,0.07)',
                     border: 'rgba(59,130,246,0.22)',
-                    prompt: `Send an email to john@example.com\nSubject: Project Update\nBody:\nHi John,\n\nJust wanted to give you a quick update on the project.\nWe're on track and will deliver by Friday.\n\nLet me know if you have any questions!\n\nBest regards`,
+                    prompt: `I want to send an email. To?: \n What do you want to send?: \n What is your tone?[1. Normal, 2. Formal, 3. Decorated(HTML)]: \n How can I call you?:`,
                   },
                   {
                     icon: FilePlus,
@@ -450,21 +450,21 @@ export default function Chat() {
                     color: '#34d399',
                     bg: 'rgba(52,211,153,0.07)',
                     border: 'rgba(52,211,153,0.22)',
-                    prompt: `Schedule a team meeting on my Google Calendar:\nTitle: Weekly Sync\nDate: Tomorrow\nTime: 10:00 AM\nDuration: 1 hour\nInvite: team@example.com`,
+                    prompt: `Schedule a collaborative meeting on my Calendar. \n Title: \n Date and Specific Time: \n Who are the collaborators to invite?: No One \n Any shared docs or agenda links from your docs you wanna attach?: None \n Meeting Link? [1. Auto-generate Meet, 2. Physical]: \n You can find the document yourself in my google docs`,
                   },
                 ].map(({ icon: Icon, label, desc, color, bg, border, prompt }) => (
                   <button
                     key={label}
                     onClick={() => { setInputValue(prompt); setTimeout(() => inputRef.current?.focus(), 0); }}
-                    className="quick-action-card flex items-start gap-3.5 px-4 py-3.5 rounded-2xl text-left transition-all duration-200 cursor-pointer w-full"
+                    className="quick-action-card flex items-start gap-3 px-4 py-3.5 rounded-2xl text-left transition-all duration-200 cursor-pointer flex-1 min-w-0 overflow-hidden"
                     style={{ background: bg, border: `1px solid ${border}` }}
                   >
-                    <div className="h-8 w-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5" style={{ background: `${color}22` }}>
-                      <Icon className="h-4 w-4" style={{ color }} />
+                    <div className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5" style={{ background: `${color}22` }}>
+                      <Icon className="h-3.5 w-3.5" style={{ color }} />
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-[13px] font-semibold text-white leading-snug">{label}</span>
-                      <span className="text-[12px] mt-0.5 leading-snug" style={{ color: `${color}cc` }}>{desc}</span>
+                    <div className="flex flex-col min-w-0 overflow-hidden">
+                      <span className="text-[12px] font-semibold text-white leading-snug break-words">{label}</span>
+                      <span className="text-[11px] mt-0.5 leading-snug break-words" style={{ color: `${color}cc` }}>{desc}</span>
                     </div>
                   </button>
                 ))}
@@ -521,7 +521,7 @@ export default function Chat() {
                   }}
                   placeholder={isRecording ? 'Listening…' : 'Ask me anything...'}
                   rows={1}
-                  className="flex-1 bg-transparent border-none focus:outline-none text-white text-[15px] placeholder:text-ink-secondary/70 w-full resize-none overflow-hidden leading-relaxed"
+                  className="flex-1 bg-transparent border-none focus:outline-none text-white text-[15px] placeholder:text-ink-secondary/70 w-full resize-none overflow-y-auto leading-relaxed"
                   style={{ minHeight: '28px', maxHeight: '180px' }}
                   disabled={isSending}
                 />
