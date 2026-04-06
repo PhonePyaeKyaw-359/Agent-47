@@ -110,11 +110,8 @@ export default function Login() {
 
           {/* Logo mark */}
           <div className="flex flex-col items-center mb-8">
-            <div className="h-12 w-12 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
-              <svg className="h-5 w-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
+            <div className="h-12 w-12 rounded-2xl mb-5 overflow-hidden">
+              <img src="/bot.png" alt="Workspace AI Logo" className="h-full w-full object-cover" />
             </div>
             <h1 className="text-xl font-semibold text-ink-primary tracking-tight">
               Workspace AI
