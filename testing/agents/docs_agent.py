@@ -30,9 +30,10 @@ def create_docs_agent(workspace_mcp: MCPToolset) -> Agent:
         "  - For large rewrites, preview the plan before applying replaceText.\n"
         "  - Return a brief change summary and the affected document id/title when available.\n"
         "  - IMPORTANT: Whenever a document is created or referenced, ALWAYS include a\n"
-        "    clickable link in your response using this format:\n"
-        "    https://docs.google.com/document/d/{documentId}/edit\n"
-        "    Display it as: [Open in Google Docs](https://docs.google.com/document/d/{documentId}/edit)"
+        "    clickable link in your response. Build the URL by inserting the real document ID into:\n"
+        "    https://docs.google.com/document/d/DOC_ID/edit\n"
+        "    Display it as: [Open in Google Docs](https://docs.google.com/document/d/DOC_ID/edit)\n"
+        "    Replace DOC_ID with the actual document ID returned by the tool."
     ),
         tools=[workspace_mcp],
         after_model_callback=make_fix_tool_names_callback("docs"),
