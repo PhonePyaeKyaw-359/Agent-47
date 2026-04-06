@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-<<<<<<< HEAD
-import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare, Mic, MicOff } from 'lucide-react';
-=======
-import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare, Trash2 } from 'lucide-react';
->>>>>>> 854a087a7bc7ae15cc8b8fb0d2a88a607c97365d
+import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare, Mic, MicOff, Trash2 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { chatService, authService, gmailService } from '../services/api';
 import { ChatBubble } from '../components/ChatBubble';
@@ -49,36 +45,36 @@ function ToolCard({ label, queryValue, onQueryChange, onRun, isRunning, isDisabl
 
 /* ─── Main Component ─────────────────────────────────────────────── */
 export default function Chat() {
-  const [inputValue, setInputValue]         = useState('');
-  const [isSending, setIsSending]           = useState(false);
-  const [triageQuery, setTriageQuery]       = useState('in:inbox newer_than:7d');
-  const [summaryQuery, setSummaryQuery]     = useState('in:inbox newer_than:14d');
-  const [isTriageLoading, setIsTriageLoading]   = useState(false);
+  const [inputValue, setInputValue] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [triageQuery, setTriageQuery] = useState('in:inbox newer_than:7d');
+  const [summaryQuery, setSummaryQuery] = useState('in:inbox newer_than:14d');
+  const [isTriageLoading, setIsTriageLoading] = useState(false);
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
-  const [isRecording, setIsRecording]       = useState(false);
-  const [voiceError, setVoiceError]         = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceError, setVoiceError] = useState('');
   const recognitionRef = useRef(null);
 
   const navigate = useNavigate();
   const messagesEndRef = useRef(null);
-  const inputRef       = useRef(null);
+  const inputRef = useRef(null);
 
-  const userId          = useAuthStore((s) => s.userId);
+  const userId = useAuthStore((s) => s.userId);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  
-  const sessions        = useAuthStore((s) => s.sessions) || [];
+
+  const sessions = useAuthStore((s) => s.sessions) || [];
   const activeSessionId = useAuthStore((s) => s.activeSessionId);
-  const activeSession   = sessions.find(s => s.id === activeSessionId) || null;
-  const chatHistory     = activeSession ? activeSession.messages : [];
-  const sessionId       = activeSessionId;
+  const activeSession = sessions.find(s => s.id === activeSessionId) || null;
+  const chatHistory = activeSession ? activeSession.messages : [];
+  const sessionId = activeSessionId;
 
-  const addMessage          = useAuthStore((s) => s.addMessage);
-  const createNewSession    = useAuthStore((s) => s.createNewSession);
-  const setActiveSession    = useAuthStore((s) => s.setActiveSession);
-  const updateSessionId     = useAuthStore((s) => s.updateSessionId);
+  const addMessage = useAuthStore((s) => s.addMessage);
+  const createNewSession = useAuthStore((s) => s.createNewSession);
+  const setActiveSession = useAuthStore((s) => s.setActiveSession);
+  const updateSessionId = useAuthStore((s) => s.updateSessionId);
 
-  const logout             = useAuthStore((s) => s.logout);
-  const setAuthenticated   = useAuthStore((s) => s.setAuthenticated);
+  const logout = useAuthStore((s) => s.logout);
+  const setAuthenticated = useAuthStore((s) => s.setAuthenticated);
 
   /* Auth guard */
   useEffect(() => {
@@ -109,9 +105,9 @@ export default function Chat() {
       const items = triage[name] || [];
       if (!items.length) return `${name}: none`;
       return [`${name}:`, ...items.slice(0, 6).map((item) => {
-        const score   = item?.urgency_score != null ? ` (${item.urgency_score})` : '';
+        const score = item?.urgency_score != null ? ` (${item.urgency_score})` : '';
         const subject = item?.subject || '(no subject)';
-        const from    = item?.from ? ` — ${item.from}` : '';
+        const from = item?.from ? ` — ${item.from}` : '';
         return `  • ${subject}${score}${from}`;
       })].join('\n');
     };
@@ -128,8 +124,8 @@ export default function Chat() {
 
   const formatSummaryResult = (result) => {
     const summaries = result?.summaries || [];
-    const overall   = result?.overall_actions || [];
-    const sections  = summaries.slice(0, 4).map((thread, idx) => {
+    const overall = result?.overall_actions || [];
+    const sections = summaries.slice(0, 4).map((thread, idx) => {
       const lines = (arr, limit = 3) => (arr || []).slice(0, limit).map((x) => `    • ${x}`).join('\n') || '    • none';
       return [
         `${idx + 1}. ${thread?.subject || '(no subject)'}`,
@@ -290,22 +286,22 @@ export default function Chat() {
         {/* User Card */}
         <div className="px-4 mb-3">
           <div className="bg-bg-card border border-border mt-1 rounded-[14px] px-3 py-2.5 flex items-center gap-3">
-             <div className="h-8 w-8 rounded-full overflow-hidden shrink-0 border border-border">
-               <img src="/user.png" alt="User" className="h-full w-full object-cover" />
-             </div>
-             <div className="flex flex-col min-w-0">
-               <p className="text-[12px] text-white font-medium truncate" title={userId}>{userId}</p>
-               <div className="flex items-center gap-1.5 mt-0.5">
-                 <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" style={{ boxShadow: '0 0 6px #3b82f6' }}/>
-                 <span className="text-[10px] text-ink-secondary leading-none mt-px">Connected</span>
-               </div>
-             </div>
+            <div className="h-8 w-8 rounded-full overflow-hidden shrink-0 border border-border">
+              <img src="/user.png" alt="User" className="h-full w-full object-cover" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <p className="text-[12px] text-white font-medium truncate" title={userId}>{userId}</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" style={{ boxShadow: '0 0 6px #3b82f6' }} />
+                <span className="text-[10px] text-ink-secondary leading-none mt-px">Connected</span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* New Chat Button */}
         <div className="px-4 mb-5">
-          <button 
+          <button
             onClick={createNewSession}
             className="w-full bg-accent text-white py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-accent-dim transition-colors"
           >
@@ -315,9 +311,9 @@ export default function Chat() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-4 space-y-6">
-          
+
           <SideSection label="RECENT CHATS">
-             <div className="space-y-1">
+            <div className="space-y-1">
               {sessions.map(s => (
                 <div
                   key={s.id}
@@ -343,31 +339,31 @@ export default function Chat() {
 
           {/* Gmail tools hidden by default under details so it doesnt clutter the UI */}
           <details className="group pb-4">
-             <summary className="text-[10px] uppercase tracking-widest text-ink-muted font-semibold px-0.5 mb-1.5 cursor-pointer hover:text-ink-secondary transition-colors list-none flex items-center justify-between">
-                GMAIL TOOLS
-             </summary>
-             <div className="space-y-2 mt-2">
-               <ToolCard
-                 label="Triage Query"
-                 queryValue={triageQuery}
-                 onQueryChange={(e) => setTriageQuery(e.target.value)}
-                 onRun={handleInboxTriage}
-                 isRunning={isTriageLoading}
-                 isDisabled={isSummaryLoading || isSending}
-                 icon={Inbox}
-                 btnLabel="Smart Triage"
-               />
-               <ToolCard
-                 label="Summary Query"
-                 queryValue={summaryQuery}
-                 onQueryChange={(e) => setSummaryQuery(e.target.value)}
-                 onRun={handleSummarize}
-                 isRunning={isSummaryLoading}
-                 isDisabled={isTriageLoading || isSending}
-                 icon={FileText}
-                 btnLabel="Summarize"
-               />
-             </div>
+            <summary className="text-[10px] uppercase tracking-widest text-ink-muted font-semibold px-0.5 mb-1.5 cursor-pointer hover:text-ink-secondary transition-colors list-none flex items-center justify-between">
+              GMAIL TOOLS
+            </summary>
+            <div className="space-y-2 mt-2">
+              <ToolCard
+                label="Triage Query"
+                queryValue={triageQuery}
+                onQueryChange={(e) => setTriageQuery(e.target.value)}
+                onRun={handleInboxTriage}
+                isRunning={isTriageLoading}
+                isDisabled={isSummaryLoading || isSending}
+                icon={Inbox}
+                btnLabel="Smart Triage"
+              />
+              <ToolCard
+                label="Summary Query"
+                queryValue={summaryQuery}
+                onQueryChange={(e) => setSummaryQuery(e.target.value)}
+                onRun={handleSummarize}
+                isRunning={isSummaryLoading}
+                isDisabled={isTriageLoading || isSending}
+                icon={FileText}
+                btnLabel="Summarize"
+              />
+            </div>
           </details>
 
         </div>
