@@ -4,8 +4,8 @@ import re
 from typing import Any
 
 from google.adk import Agent
-from google.adk.agents.context import Context
 from google.adk.tools import BaseTool
+from google.adk.tools.tool_context import ToolContext
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 
 from ..tools.fix_tool_names import make_fix_tool_names_callback
@@ -29,7 +29,7 @@ def _looks_like_real_email(address: str) -> bool:
 
 
 def _validate_send_args(
-    tool: BaseTool, args: dict[str, Any], context: Context
+    tool: BaseTool, args: dict[str, Any], tool_context: ToolContext
 ) -> dict | None:
     """Block gmail.send / gmail.createDraft when the recipient looks fake."""
     tool_name = getattr(tool, "name", "") or ""
