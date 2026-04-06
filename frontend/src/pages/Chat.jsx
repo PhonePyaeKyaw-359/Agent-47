@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare } from 'lucide-react';
+import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare, Mic, MicOff } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { chatService, authService, gmailService } from '../services/api';
 import { ChatBubble } from '../components/ChatBubble';
@@ -51,6 +51,9 @@ export default function Chat() {
   const [summaryQuery, setSummaryQuery]     = useState('in:inbox newer_than:14d');
   const [isTriageLoading, setIsTriageLoading]   = useState(false);
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+  const [isRecording, setIsRecording]       = useState(false);
+  const [voiceError, setVoiceError]         = useState('');
+  const recognitionRef = useRef(null);
 
   const navigate = useNavigate();
   const messagesEndRef = useRef(null);
@@ -186,6 +189,70 @@ export default function Chat() {
     } catch (error) {
       addMessage({ text: `Summarization failed: ${error.response?.data?.detail?.message || error.message}`, isUser: false, id: Date.now() + 1, isError: true });
     } finally { setIsSummaryLoading(false); }
+  };
+
+  /* ─── Voice-to-text ────────────────────────────────────── */
+  const handleVoiceToggle = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setVoiceError('Speech Recognition is not supported in this browser.');
+      setTimeout(() => setVoiceError(''), 3000);
+      return;
+    }
+
+    if (isRecording) {
+      // Stop recording → auto-submit handled by onend below
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    setVoiceError('');
+    const recognition = new SR();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognitionRef.current = recognition;
+
+    recognition.onstart = () => setIsRecording(true);
+
+    recognition.onresult = async (event) => {
+      const transcript = event.results[0][0].transcript.trim();
+      if (!transcript) return;
+      // Populate input briefly, then auto-send
+      setInputValue(transcript);
+      setIsRecording(false);
+      // Send directly
+      const userMessage = { text: transcript, isUser: true, id: Date.now() };
+      addMessage(userMessage);
+      setInputValue('');
+      setIsSending(true);
+      try {
+        const response = await chatService.runAgent(userId, transcript, sessionId || '');
+        if (response.session_id && response.session_id !== sessionId) {
+          updateSessionId(sessionId, response.session_id);
+        }
+        addMessage({ text: response.response, isUser: false, id: Date.now() + 1 });
+      } catch (error) {
+        addMessage({
+          text: `Error: ${error.response?.data?.message || error.message}`,
+          isUser: false, id: Date.now() + 1, isError: true,
+        });
+      } finally {
+        setIsSending(false);
+      }
+    };
+
+    recognition.onerror = (event) => {
+      setIsRecording(false);
+      if (event.error !== 'aborted') {
+        setVoiceError(`Mic error: ${event.error}`);
+        setTimeout(() => setVoiceError(''), 3000);
+      }
+    };
+
+    recognition.onend = () => setIsRecording(false);
+
+    recognition.start();
   };
 
   const handleLogout = () => { logout(); navigate('/'); };
@@ -379,10 +446,28 @@ export default function Chat() {
                   ref={inputRef}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Ask me anything..."
+                  placeholder={isRecording ? 'Listening…' : 'Ask me anything...'}
                   className="flex-1 bg-transparent border-none focus:outline-none text-white text-[15px] placeholder:text-ink-secondary/70 h-full w-full"
                   disabled={isSending}
                 />
+                {/* Mic button */}
+                <button
+                  type="button"
+                  onClick={handleVoiceToggle}
+                  disabled={isSending}
+                  title={isRecording ? 'Stop recording & send' : 'Start voice input'}
+                  className={[
+                    "h-10 w-10 shrink-0 flex items-center justify-center rounded-xl mr-1",
+                    "transition-all duration-200 bg-transparent cursor-pointer border-none outline-none",
+                    isRecording
+                      ? "text-red-400 animate-pulse"
+                      : "text-ink-secondary hover:text-accent hover:scale-105 active:scale-95",
+                    "disabled:opacity-30 disabled:pointer-events-none",
+                  ].join(' ')}
+                >
+                  {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                </button>
+                {/* Send button */}
                 <button
                   type="submit"
                   disabled={!inputValue.trim() || isSending}
@@ -401,6 +486,9 @@ export default function Chat() {
                 </button>
               </div>
             </form>
+            {voiceError && (
+              <p className="text-center mt-2 text-[11px] text-red-400 leading-tight">{voiceError}</p>
+            )}
             <p className="text-center mt-3 text-[11px] text-ink-muted leading-tight">
               Agent47 can make mistakes. Verify important information.
             </p>
