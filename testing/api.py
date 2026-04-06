@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
+from google.genai.errors import ClientError
 from google.genai.types import Content, Part
 
 from .agent import get_root_agent, invalidate_user_agent
@@ -260,15 +261,27 @@ async def _run_user_agent_text(user_id: str, tokens: dict, prompt: str) -> str:
     content = Content(role="user", parts=[Part(text=prompt)])
     final_response = ""
 
-    async for event in runner.run_async(
-        user_id=user_id,
-        session_id=session_id,
-        new_message=content,
-    ):
-        if event.is_final_response() and event.content:
-            for part in event.content.parts:
-                if hasattr(part, "text") and part.text:
-                    final_response += part.text
+    try:
+        async for event in runner.run_async(
+            user_id=user_id,
+            session_id=session_id,
+            new_message=content,
+        ):
+            if event.is_final_response() and event.content:
+                for part in event.content.parts:
+                    if hasattr(part, "text") and part.text:
+                        final_response += part.text
+    except ClientError as exc:
+        code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+        if code == 429:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "rate_limited",
+                    "message": "Vertex AI quota exhausted. Please wait a moment and try again.",
+                },
+            )
+        raise
 
     return final_response
 
@@ -596,15 +609,27 @@ async def run(request: RunRequest):
     content = Content(role="user", parts=[Part(text=request.message)])
     final_response = ""
 
-    async for event in runner.run_async(
-        user_id=user_id,
-        session_id=session_id,
-        new_message=content,
-    ):
-        if event.is_final_response() and event.content:
-            for part in event.content.parts:
-                if hasattr(part, "text") and part.text:
-                    final_response += part.text
+    try:
+        async for event in runner.run_async(
+            user_id=user_id,
+            session_id=session_id,
+            new_message=content,
+        ):
+            if event.is_final_response() and event.content:
+                for part in event.content.parts:
+                    if hasattr(part, "text") and part.text:
+                        final_response += part.text
+    except ClientError as exc:
+        code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+        if code == 429:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "rate_limited",
+                    "message": "Vertex AI quota exhausted. Please wait a moment and try again.",
+                },
+            )
+        raise
 
     return RunResponse(
         response=final_response,
