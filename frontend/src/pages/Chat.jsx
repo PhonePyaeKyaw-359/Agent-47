@@ -211,9 +211,9 @@ export default function Chat() {
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-5 py-6">
           <div className="h-7 w-7 rounded-lg overflow-hidden shrink-0">
-            <img src="/bot.png" alt="Workspace AI Logo" className="h-full w-full object-cover" />
+            <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
           </div>
-          <span className="text-[15px] font-bold text-white tracking-tight">Workspace AI</span>
+          <span className="text-[15px] font-bold text-white tracking-tight">Agent47</span>
         </div>
 
         {/* User Card */}
@@ -314,9 +314,9 @@ export default function Chat() {
         <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-bg-surface">
           <div className="flex items-center gap-2">
             <div className="h-7 w-7 rounded-lg overflow-hidden shrink-0">
-              <img src="/bot.png" alt="Workspace AI Logo" className="h-full w-full object-cover" />
+              <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
             </div>
-            <span className="text-sm font-semibold">Workspace AI</span>
+            <span className="text-sm font-semibold">Agent47</span>
           </div>
           <button
             onClick={handleLogout}
@@ -331,13 +331,13 @@ export default function Chat() {
           {chatHistory.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-4 animate-fade-in-up pb-[10vh]">
               <div className="h-[68px] w-[68px] rounded-full mb-6 overflow-hidden flex items-center justify-center bg-[#00d4d4]">
-                <img src="/bot.png" alt="Workspace AI Logo" className="h-full w-full object-cover" />
+                <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
               </div>
               <h2 className="text-[26px] font-bold text-white mb-2 tracking-tight">
                 How can I help you today?
               </h2>
               <p className="text-[15px] text-ink-secondary max-w-[420px] leading-relaxed">
-                I'm your Google Workspace AI assistant. I can help manage your calendar, draft emails, and access your documents.
+                I'm Agent47, your Google Workspace assistant. I can help manage your calendar, draft emails, and access your documents.
               </p>
             </div>
           ) : (
@@ -402,7 +402,7 @@ export default function Chat() {
               </div>
             </form>
             <p className="text-center mt-3 text-[11px] text-ink-muted leading-tight">
-              Workspace AI can make mistakes. Verify important information.
+              Agent47 can make mistakes. Verify important information.
             </p>
           </div>
         </div>

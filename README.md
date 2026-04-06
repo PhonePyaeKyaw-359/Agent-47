@@ -1,4 +1,4 @@
-# Workspace AI — Multi-Agent Personal Assistant
+# Agent47 — Multi-Agent Personal Assistant
 
 A multi-agent AI system built with Google ADK and Gemini that coordinates Google Workspace operations plus local task and note management.
 

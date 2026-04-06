@@ -111,10 +111,10 @@ export default function Login() {
           {/* Logo mark */}
           <div className="flex flex-col items-center mb-8">
             <div className="h-12 w-12 rounded-2xl mb-5 overflow-hidden">
-              <img src="/bot.png" alt="Workspace AI Logo" className="h-full w-full object-cover" />
+              <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
             </div>
             <h1 className="text-xl font-semibold text-ink-primary tracking-tight">
-              Workspace AI
+              Agent47
             </h1>
             <p className="mt-1 text-sm text-ink-secondary text-center">
               Sign in with your Google Workspace to continue

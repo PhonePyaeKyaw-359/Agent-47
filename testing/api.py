@@ -1,5 +1,5 @@
 """
-FastAPI deployment for the Workspace AI multi-agent system (multi-user).
+FastAPI deployment for the Agent47 multi-agent system (multi-user).
 
 Run with:
     uvicorn testing.api:app --host 0.0.0.0 --port 8000
@@ -35,7 +35,7 @@ from .tools.user_auth import (
     delete_user_tokens,
 )
 
-APP_NAME = "workspace_ai"
+APP_NAME = "agent47"
 session_service = InMemorySessionService()
 
 # Per-user Runner cache  (user_id → Runner)
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Workspace AI",
+    title="Agent47",
     description=(
         "Multi-agent system for Google Workspace with per-user OAuth. "
         "Supports Google Calendar, Gmail, Google Chat, Google Docs, "
