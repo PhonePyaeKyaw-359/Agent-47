@@ -1,7 +1,87 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-@layer base {
-  body {
-    @apply antialiased text-slate-200 bg-slate-950;
-  }
+/* ── Design tokens via Tailwind v4 @theme ────────────────────────── */
+@theme {
+  --font-family-sans: 'Space Grotesk', system-ui, sans-serif;
+  --font-family-mono: 'JetBrains Mono', monospace;
+
+  /* BG */
+  --color-bg-base:    #07080d;
+  --color-bg-surface: #0d0f18;
+  --color-bg-card:    #111422;
+
+  /* Accent (electric indigo) */
+  --color-accent:     #818cf8;
+  --color-accent-dim: #4f5696;
+
+  /* Borders */
+  --color-border:        #1c1f2e;
+  --color-border-accent: #2e3353;
+
+  /* Text */
+  --color-ink-primary:   #e2e8f0;
+  --color-ink-secondary: #7b82a0;
+  --color-ink-muted:     #3e4261;
 }
+
+/* ── Base styles ─────────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    background-color: #07080d;
+    color: #e2e8f0;
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    /* Subtle dot grid */
+    background-image: radial-gradient(circle, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  ::-webkit-scrollbar          { width: 4px; }
+  ::-webkit-scrollbar-track    { background: transparent; }
+  ::-webkit-scrollbar-thumb    { background: #2e3353; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: #4f5696; }
+
+  ::selection { background: rgba(129,140,248,0.2); color: #818cf8; }
+}
+
+/* ── Utility overrides ───────────────────────────────────────────── */
+@layer utilities {
+  .shadow-glow-sm  { box-shadow: 0 0 12px rgba(129,140,248,0.15); }
+  .shadow-glow     { box-shadow: 0 0 24px rgba(129,140,248,0.22); }
+  .shadow-glow-lg  { box-shadow: 0 0 48px rgba(129,140,248,0.28); }
+  .shadow-card     { box-shadow: 0 4px 32px rgba(0,0,0,0.55); }
+}
+
+/* ── Animations ──────────────────────────────────────────────────── */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes typing-dot {
+  0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+  40%           { opacity: 1;   transform: scale(1); }
+}
+
+.animate-fade-in-up { animation: fade-in-up 0.35s ease both; }
+.delay-100          { animation-delay: 0.1s; }
+.delay-200          { animation-delay: 0.2s; }
+
+.typing-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #818cf8;
+  animation: typing-dot 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }

@@ -9,15 +9,14 @@ export default function Login() {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   const setUserId = useAuthStore((state) => state.setUserId);
   const setAuthenticated = useAuthStore((state) => state.setAuthenticated);
   const userId = useAuthStore((state) => state.userId);
-  
+
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // On mount, check if there's a stored userId and we are returning from OAuth
   useEffect(() => {
     const verifyAuth = async () => {
       if (userId) {
@@ -28,21 +27,16 @@ export default function Login() {
             setAuthenticated(true);
             navigate('/chat');
           } else {
-             // Not authenticated yet
-             setAuthenticated(false);
+            setAuthenticated(false);
           }
         } catch (err) {
-          console.error("Auth status check failed:", err);
-          // If we fail, we just stay on login
+          console.error('Auth status check failed:', err);
           setAuthenticated(false);
         } finally {
           setIsLoading(false);
         }
       }
     };
-    
-    // You could also check if URL has specific callback params like ?code=...
-    // Adjust based on your API's exact redirect callback behavior
     verifyAuth();
   }, [userId, navigate, setAuthenticated, searchParams]);
 
@@ -52,116 +46,128 @@ export default function Login() {
       setError('Please enter a user ID');
       return;
     }
-    
+
     setError('');
     setIsLoading(true);
-    
+
     try {
-      // 1. Store user ID before redirect
       setUserId(inputValue);
-      
-      // 2. Get auth URL
       const data = await authService.getLoginInfo(inputValue);
-      
+
       if (data && data.auth_url) {
-        // 3. Open Popup instead of redirecting
         const width = 600;
         const height = 700;
         const left = window.screenX + (window.outerWidth - width) / 2;
         const top = window.screenY + (window.outerHeight - height) / 2;
-        
+
         const popup = window.open(
           data.auth_url,
           'Google Login',
           `width=${width},height=${height},left=${left},top=${top},popup=yes`
         );
-        
-        // 4. Poll for authentication status
+
         const pollInterval = setInterval(async () => {
           try {
             if (popup && popup.closed) {
               clearInterval(pollInterval);
               setIsLoading(false);
-              // Just in case they closed it before finishing
             }
-            
             const statusData = await authService.checkStatus(inputValue);
             if (statusData && statusData.authenticated === true) {
               clearInterval(pollInterval);
-              if (popup && !popup.closed) {
-                popup.close();
-              }
+              if (popup && !popup.closed) popup.close();
               setAuthenticated(true);
               navigate('/chat');
             }
-          } catch (pollErr) {
-            // Ignore temporary endpoint failures during polling
-          }
-        }, 2000); // Check every 2 seconds
-
+          } catch (_) {}
+        }, 2000);
       } else {
         setError('Failed to get authentication URL. Please try again.');
         setIsLoading(false);
       }
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.message || 'An error occurred during login. Please try again.');
+      setError(err.response?.data?.message || 'An error occurred. Please try again.');
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4 sm:px-6 lg:px-8">
-      {/* Background decoration */}
-      <div className="absolute top-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-blue-900/30 blur-3xl opacity-50" />
-        <div className="absolute top-[20%] -right-[10%] w-[40%] h-[40%] rounded-full bg-slate-800/50 blur-3xl opacity-50" />
+    <div className="min-h-screen flex items-center justify-center px-4">
+
+      {/* Ambient glow orbs */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-accent/5 blur-[120px]" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-accent/4 blur-[100px]" />
       </div>
 
-      <div className="max-w-md w-full space-y-8 bg-slate-900 p-10 rounded-3xl shadow-2xl shadow-blue-900/20 z-10 border border-slate-800">
-        <div className="text-center">
-          <div className="mx-auto h-16 w-16 bg-gradient-to-tr from-blue-600 to-slate-800 rounded-2xl flex items-center justify-center shadow-lg mb-6 transform transition-transform hover:scale-105">
-            <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          <h2 className="mt-2 text-3xl font-extrabold text-slate-100 tracking-tight">
-            Welcome Back
-          </h2>
-          <p className="mt-2 text-sm text-slate-400">
-            Sign in with your Google Workspace to continue
-          </p>
-        </div>
-        
-        <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-          <div className="rounded-md shadow-sm space-y-2">
-            <label htmlFor="user-id" className="block text-sm font-medium text-slate-300 ml-1">
-              User ID
-            </label>
-            <Input
-              id="user-id"
-              name="user_id"
-              type="text"
-              autoComplete="username"
-              required
-              placeholder="e.g. john.doe or 12345"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              className={error ? "border-red-500 focus-visible:ring-red-500" : ""}
-            />
-            {error && <p className="text-red-400 text-sm mt-1 ml-1 font-medium">{error}</p>}
+      {/* Card */}
+      <div className="relative w-full max-w-sm animate-fade-in-up">
+        {/* Top accent line */}
+        <div className="absolute -top-px left-8 right-8 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
+
+        <div className="bg-bg-surface border border-border rounded-3xl p-8 shadow-card">
+
+          {/* Logo mark */}
+          <div className="flex flex-col items-center mb-8">
+            <div className="h-12 w-12 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
+              <svg className="h-5 w-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <h1 className="text-xl font-semibold text-ink-primary tracking-tight">
+              Workspace AI
+            </h1>
+            <p className="mt-1 text-sm text-ink-secondary text-center">
+              Sign in with your Google Workspace to continue
+            </p>
           </div>
 
-          <div>
-            <Button 
-              type="submit" 
-              className="w-full flex justify-center text-lg shadow-blue-700/30"
+          {/* Form */}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label
+                htmlFor="user-id"
+                className="block text-xs font-medium text-ink-secondary mb-1.5 uppercase tracking-wider"
+              >
+                User ID
+              </label>
+              <Input
+                id="user-id"
+                name="user_id"
+                type="text"
+                autoComplete="username"
+                required
+                placeholder="e.g. john.doe"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                className={error ? 'border-red-800 focus-visible:border-red-600' : ''}
+              />
+              {error && (
+                <p className="mt-2 text-xs text-red-400 flex items-center gap-1">
+                  <span>⚠</span> {error}
+                </p>
+              )}
+            </div>
+
+            <Button
+              type="submit"
+              className="w-full h-11 text-sm mt-2"
               isLoading={isLoading}
             >
-              Login with Google Workspace
+              Continue with Google Workspace
             </Button>
-          </div>
-        </form>
+          </form>
+
+          {/* Footer */}
+          <p className="mt-6 text-center text-xs text-ink-muted">
+            Your credentials are handled securely via OAuth 2.0
+          </p>
+        </div>
+
+        {/* Bottom accent line */}
+        <div className="absolute -bottom-px left-8 right-8 h-px bg-gradient-to-r from-transparent via-border-accent to-transparent" />
       </div>
     </div>
   );
