@@ -14,7 +14,7 @@ import re
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -578,6 +578,57 @@ async def gmail_summarize(request: GmailSummarizeRequest):
 async def health():
     """Health check endpoint."""
     return {"status": "ok", "version": "2.0.0"}
+
+
+# ---------------------------------------------------------------------------
+# Speech-to-Text
+# ---------------------------------------------------------------------------
+
+@app.post("/speech")
+async def speech_to_text(audio: UploadFile = File(...), language: str = "en-US"):
+    """Transcribe uploaded audio using Google Cloud Speech-to-Text.
+
+    Accepts any audio format supported by the MediaRecorder API
+    (webm/opus, ogg/opus). Returns ``{transcript: "..."}``.
+    """
+    from google.cloud import speech as gcp_speech  # lazy import
+
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio file.")
+
+    client = gcp_speech.SpeechClient()
+
+    # Detect encoding from MIME type; fall back to WEBM_OPUS
+    mime = (audio.content_type or "").lower()
+    if "ogg" in mime:
+        encoding = gcp_speech.RecognitionConfig.AudioEncoding.OGG_OPUS
+        sample_rate = 48000
+    else:
+        # webm/opus — use encoding=WEBM_OPUS (auto sample-rate)
+        encoding = gcp_speech.RecognitionConfig.AudioEncoding.WEBM_OPUS
+        sample_rate = 48000
+
+    config = gcp_speech.RecognitionConfig(
+        encoding=encoding,
+        sample_rate_hertz=sample_rate,
+        language_code=language,
+        enable_automatic_punctuation=True,
+    )
+    audio_obj = gcp_speech.RecognitionAudio(content=audio_bytes)
+
+    try:
+        response = client.recognize(config=config, audio=audio_obj)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Speech API error: {exc}") from exc
+
+    transcript = " ".join(
+        result.alternatives[0].transcript
+        for result in response.results
+        if result.alternatives
+    ).strip()
+
+    return {"transcript": transcript}
 
 
 @app.post("/run", response_model=RunResponse)

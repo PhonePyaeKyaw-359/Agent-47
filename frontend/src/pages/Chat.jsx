@@ -53,7 +53,7 @@ export default function Chat() {
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [voiceError, setVoiceError] = useState('');
-  const recognitionRef = useRef(null);
+  const recognitionRef = useRef(null); // holds MediaRecorder instance
 
   const navigate = useNavigate();
   const messagesEndRef = useRef(null);
@@ -199,37 +199,75 @@ export default function Chat() {
     } finally { setIsSummaryLoading(false); }
   };
 
-  /* ─── Voice-to-text ────────────────────────────────────── */
-  const handleVoiceToggle = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      setVoiceError('Speech Recognition is not supported in this browser.');
-      setTimeout(() => setVoiceError(''), 3000);
-      return;
-    }
-
+  /* ─── Voice-to-text (Google Cloud Speech-to-Text) ──────────── */
+  const handleVoiceToggle = async () => {
+    // Stop if already recording
     if (isRecording) {
-      // Stop recording → auto-submit handled by onend below
       recognitionRef.current?.stop();
       return;
     }
 
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceError('Microphone access is not supported in this browser.');
+      setTimeout(() => setVoiceError(''), 3000);
+      return;
+    }
+
     setVoiceError('');
-    const recognition = new SR();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognitionRef.current = recognition;
 
-    recognition.onstart = () => setIsRecording(true);
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setVoiceError('Microphone permission denied.');
+      setTimeout(() => setVoiceError(''), 3000);
+      return;
+    }
 
-    recognition.onresult = async (event) => {
-      const transcript = event.results[0][0].transcript.trim();
-      if (!transcript) return;
-      // Populate input briefly, then auto-send
-      setInputValue(transcript);
+    // Pick the best supported MIME type
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+      ? 'audio/ogg;codecs=opus'
+      : 'audio/webm';
+
+    const chunks = [];
+    const recorder = new MediaRecorder(stream, { mimeType });
+    recognitionRef.current = recorder;
+
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+    recorder.onstart = () => setIsRecording(true);
+
+    recorder.onstop = async () => {
       setIsRecording(false);
-      // Send directly
+      stream.getTracks().forEach((t) => t.stop());
+
+      const blob = new Blob(chunks, { type: mimeType });
+      if (blob.size < 100) return; // nothing recorded
+
+      const formData = new FormData();
+      formData.append('audio', blob, 'recording.webm');
+
+      let transcript = '';
+      try {
+        const res = await fetch('/api/speech', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        transcript = (data.transcript || '').trim();
+      } catch (err) {
+        setVoiceError(`Transcription failed: ${err.message}`);
+        setTimeout(() => setVoiceError(''), 4000);
+        return;
+      }
+
+      if (!transcript) {
+        setVoiceError('No speech detected. Please try again.');
+        setTimeout(() => setVoiceError(''), 3000);
+        return;
+      }
+
+      // Auto-send the transcript
       const userMessage = { text: transcript, isUser: true, id: Date.now() };
       addMessage(userMessage);
       setInputValue('');
@@ -250,17 +288,17 @@ export default function Chat() {
       }
     };
 
-    recognition.onerror = (event) => {
+    recorder.onerror = () => {
       setIsRecording(false);
-      if (event.error !== 'aborted') {
-        setVoiceError(`Mic error: ${event.error}`);
-        setTimeout(() => setVoiceError(''), 3000);
-      }
+      setVoiceError('Recording error. Please try again.');
+      setTimeout(() => setVoiceError(''), 3000);
     };
 
-    recognition.onend = () => setIsRecording(false);
-
-    recognition.start();
+    // Record for up to 30 seconds, then auto-stop
+    recorder.start();
+    setTimeout(() => {
+      if (recorder.state === 'recording') recorder.stop();
+    }, 30000);
   };
 
   const handleLogout = () => { logout(); navigate('/'); };
@@ -460,7 +498,7 @@ export default function Chat() {
                     color: '#34d399',
                     bg: 'rgba(52,211,153,0.07)',
                     border: 'rgba(52,211,153,0.22)',
-                    prompt: `Schedule a collaborative meeting on my Calendar. \n Title: \n Date and Specific Time: \n Who are the collaborators to invite?: No One \n Any shared docs or agenda links from your docs you wanna attach?: None \n Meeting Link? [1. Auto-generate Meet, 2. Physical]:`,
+                    prompt: `Schedule a team sync meeting next Monday at 10am for 1 hour. Invite the team and add a Google Meet link.`,
                   },
                 ].map(({ icon: Icon, label, desc, color, bg, border, prompt }) => (
                   <button
