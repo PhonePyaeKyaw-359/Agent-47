@@ -1,9 +1,53 @@
 """Gmail specialist sub-agent."""
 
+import re
+from typing import Any
+
 from google.adk import Agent
+from google.adk.agents.context import Context
+from google.adk.tools import BaseTool
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 
 from ..tools.fix_tool_names import make_fix_tool_names_callback
+
+# Patterns that indicate a hallucinated / placeholder email address
+_PLACEHOLDER_PATTERNS = re.compile(
+    r"example\.com|test\.com|sample\.com|placeholder|"
+    r"johndoe|jane\.doe|yourname|your_email|user@email|"
+    r"recipient@|sender@email",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_real_email(address: str) -> bool:
+    """Return False if the address looks like a placeholder."""
+    if not address or "@" not in address:
+        return False
+    if _PLACEHOLDER_PATTERNS.search(address):
+        return False
+    return True
+
+
+def _validate_send_args(
+    tool: BaseTool, args: dict[str, Any], context: Context
+) -> dict | None:
+    """Block gmail.send / gmail.createDraft when the recipient looks fake."""
+    tool_name = getattr(tool, "name", "") or ""
+    if tool_name not in ("gmail.send", "gmail.createDraft"):
+        return None  # allow all other tools through
+
+    to_field = args.get("to", "")
+    recipients = [to_field] if isinstance(to_field, str) else (to_field or [])
+    bad = [r for r in recipients if not _looks_like_real_email(r)]
+
+    if bad:
+        return {
+            "error": (
+                f"Blocked: recipient address(es) {bad} look like placeholders. "
+                "Please ask the user for their real email address before sending."
+            )
+        }
+    return None  # allow the call through
 
 
 def create_gmail_agent(workspace_mcp: MCPToolset) -> Agent:
@@ -62,5 +106,6 @@ def create_gmail_agent(workspace_mcp: MCPToolset) -> Agent:
         "  - Return concise summaries to the orchestrator."
     ),
         tools=[workspace_mcp],
+        before_tool_callback=_validate_send_args,
         after_model_callback=make_fix_tool_names_callback("gmail"),
     )
