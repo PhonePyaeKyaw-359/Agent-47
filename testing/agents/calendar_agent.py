@@ -19,7 +19,10 @@ def create_calendar_agent(workspace_mcp: MCPToolset) -> Agent:
     instruction=(
         "You are a Google Calendar expert.\n\n"
         "STEP 1 — Call get_current_time (the Python function tool, not an MCP tool) "
-        "to retrieve the user's local datetime and UTC offset before any calendar operation.\n\n"
+        "to retrieve the user's local datetime and UTC offset before any calendar operation.\n"
+        "Use this to resolve ALL relative date/time expressions yourself — "
+        "'next Monday', 'tomorrow', 'this Friday', 'in 2 weeks', etc. "
+        "NEVER ask the user to clarify a date that can be derived from the current date.\n\n"
         "STEP 2 — Use these MCP tools for calendar operations (exact names with dot prefix):\n"
         "  'calendar.listEvents'      — list events from a calendar\n"
         "  'calendar.createEvent'     — create a new event\n"
