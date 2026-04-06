@@ -86,6 +86,22 @@
 .typing-dot:nth-child(2) { animation-delay: 0.2s; }
 .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
+/* ── Quick action cards ──────────────────────────────────────────── */
+.quick-action-card {
+  background: none;
+  outline: none;
+  white-space: nowrap;
+}
+.quick-action-card:hover {
+  filter: brightness(1.15);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+}
+.quick-action-card:active {
+  transform: translateY(0);
+  filter: brightness(0.95);
+}
+
 /* ── Send button ─────────────────────────────────────────────────── */
 .send-btn {
   background: none;

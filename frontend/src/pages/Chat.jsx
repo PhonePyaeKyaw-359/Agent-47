@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare, Mic, MicOff, Trash2 } from 'lucide-react';
+import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare, Mic, MicOff, Trash2, Mail, Calendar, FilePlus } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { chatService, authService, gmailService } from '../services/api';
 import { ChatBubble } from '../components/ChatBubble';
@@ -96,6 +96,14 @@ export default function Chat() {
 
   /* Auto-focus */
   useEffect(() => { inputRef.current?.focus(); }, [isSending]);
+
+  /* Auto-resize textarea when value changes (e.g. from card click) */
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 180) + 'px';
+  }, [inputValue]);
 
   /* ─── Helpers ──────────────────────────────────────────── */
   const formatTriageResult = (result) => {
@@ -410,9 +418,57 @@ export default function Chat() {
               <h2 className="text-[26px] font-bold text-white mb-2 tracking-tight">
                 How can I help you today?
               </h2>
-              <p className="text-[15px] text-ink-secondary max-w-[420px] leading-relaxed">
+              <p className="text-[15px] text-ink-secondary max-w-[420px] leading-relaxed mb-8">
                 I'm Agent47, your Google Workspace assistant. I can help manage your calendar, draft emails, and access your documents.
               </p>
+
+              {/* Quick Action Cards */}
+              <div className="grid grid-cols-1 gap-3 w-full max-w-[480px]">
+                {[
+                  {
+                    icon: Mail,
+                    label: 'Send an Email',
+                    desc: 'Draft and send a professional email',
+                    color: '#3b82f6',
+                    bg: 'rgba(59,130,246,0.07)',
+                    border: 'rgba(59,130,246,0.22)',
+                    prompt: `Send an email to john@example.com\nSubject: Project Update\nBody:\nHi John,\n\nJust wanted to give you a quick update on the project.\nWe're on track and will deliver by Friday.\n\nLet me know if you have any questions!\n\nBest regards`,
+                  },
+                  {
+                    icon: FilePlus,
+                    label: 'Create a Document',
+                    desc: 'Create a new Google Doc with structure',
+                    color: '#a78bfa',
+                    bg: 'rgba(167,139,250,0.07)',
+                    border: 'rgba(167,139,250,0.22)',
+                    prompt: `Create a Google Doc titled "Q2 Planning Notes"\n\nInclude the following sections:\n1. Goals — What we want to achieve this quarter\n2. Timeline — Key milestones and deadlines\n3. Team Responsibilities — Who owns what`,
+                  },
+                  {
+                    icon: Calendar,
+                    label: 'Schedule an Event',
+                    desc: 'Add a meeting or event to your calendar',
+                    color: '#34d399',
+                    bg: 'rgba(52,211,153,0.07)',
+                    border: 'rgba(52,211,153,0.22)',
+                    prompt: `Schedule a team meeting on my Google Calendar:\nTitle: Weekly Sync\nDate: Tomorrow\nTime: 10:00 AM\nDuration: 1 hour\nInvite: team@example.com`,
+                  },
+                ].map(({ icon: Icon, label, desc, color, bg, border, prompt }) => (
+                  <button
+                    key={label}
+                    onClick={() => { setInputValue(prompt); setTimeout(() => inputRef.current?.focus(), 0); }}
+                    className="quick-action-card flex items-start gap-3.5 px-4 py-3.5 rounded-2xl text-left transition-all duration-200 cursor-pointer w-full"
+                    style={{ background: bg, border: `1px solid ${border}` }}
+                  >
+                    <div className="h-8 w-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5" style={{ background: `${color}22` }}>
+                      <Icon className="h-4 w-4" style={{ color }} />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[13px] font-semibold text-white leading-snug">{label}</span>
+                      <span className="text-[12px] mt-0.5 leading-snug" style={{ color: `${color}cc` }}>{desc}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="max-w-3xl mx-auto pb-4">
@@ -448,13 +504,25 @@ export default function Chat() {
         <div className="px-4 md:px-8 pb-8 pt-2 bg-transparent">
           <div className="max-w-4xl mx-auto">
             <form onSubmit={handleSend} className="relative flex items-center w-full">
-              <div className="flex-1 flex items-center bg-bg-card rounded-2xl border border-border h-[64px] pl-6 pr-2 focus-within:border-accent/50 shadow-sm transition-colors">
-                <input
+              <div className="flex-1 flex items-start bg-bg-card rounded-2xl border border-border pl-6 pr-2 pt-[18px] pb-[18px] focus-within:border-accent/50 shadow-sm transition-colors min-h-[64px]">
+                <textarea
                   ref={inputRef}
                   value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
+                  onChange={(e) => {
+                    setInputValue(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.min(e.target.scrollHeight, 180) + 'px';
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend(e);
+                    }
+                  }}
                   placeholder={isRecording ? 'Listening…' : 'Ask me anything...'}
-                  className="flex-1 bg-transparent border-none focus:outline-none text-white text-[15px] placeholder:text-ink-secondary/70 h-full w-full"
+                  rows={1}
+                  className="flex-1 bg-transparent border-none focus:outline-none text-white text-[15px] placeholder:text-ink-secondary/70 w-full resize-none overflow-hidden leading-relaxed"
+                  style={{ minHeight: '28px', maxHeight: '180px' }}
                   disabled={isSending}
                 />
                 {/* Mic button */}
