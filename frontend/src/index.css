@@ -23,6 +23,7 @@
   --color-ink-primary:   #ffffff;
   --color-ink-secondary: #93c5fd;
   --color-ink-muted:     #60a5fa;
+  --color-ink-dimmed:    #3b6fd4;
 }
 
 /* ── Base styles ─────────────────────────────────────────────────── */
@@ -105,6 +106,7 @@
 }
 
 /* ── Send button ─────────────────────────────────────────────────── */
+/* kept for backward compat but send button is now inline-styled */
 .send-btn {
   background: none;
   border: none;
@@ -113,22 +115,28 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
-  margin-right: 8px;
+  margin-right: 4px;
   cursor: pointer;
+  border-radius: 12px;
   transition: opacity 0.2s;
 }
 .send-btn:disabled {
   opacity: 0.25;
   cursor: default;
 }
-.send-btn svg {
-  color: #60a5fa;
-  transition: color 0.18s ease, transform 0.18s ease;
+
+/* ── Mic recording pulse ─────────────────────────────────────────── */
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.45); }
+  50%       { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
 }
-.send-btn:not(:disabled):hover svg {
-  color: #3b82f6;
-  transform: scale(1.2);
+.mic-recording {
+  animation: mic-pulse 1s ease infinite;
 }
+
+/* ── Markdown prose in AI bubbles ────────────────────────────────── */
+.prose-bubble p { margin-bottom: 0.5rem; }
+.prose-bubble p:last-child { margin-bottom: 0; }

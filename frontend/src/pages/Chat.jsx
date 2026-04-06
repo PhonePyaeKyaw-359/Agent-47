@@ -284,11 +284,14 @@ export default function Chat() {
       <aside className="hidden md:flex w-64 flex-col bg-bg-surface border-r border-border shrink-0">
 
         {/* Logo */}
-        <div className="flex items-center gap-2.5 px-5 py-6">
-          <div className="h-7 w-7 rounded-lg overflow-hidden shrink-0">
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-border/40">
+          <div className="h-8 w-8 rounded-xl overflow-hidden shrink-0 shadow-glow-sm">
             <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
           </div>
-          <span className="text-[15px] font-bold text-white tracking-tight">Agent47</span>
+          <div className="flex flex-col">
+            <span className="text-[14px] font-bold text-white tracking-tight leading-none">Agent47</span>
+            <span className="text-[10px] text-ink-muted mt-0.5">Google Workspace AI</span>
+          </div>
         </div>
 
         {/* User Card */}
@@ -308,12 +311,13 @@ export default function Chat() {
         </div>
 
         {/* New Chat Button */}
-        <div className="px-4 mb-5">
+        <div className="px-4 mb-4 mt-4">
           <button
             onClick={createNewSession}
-            className="w-full bg-accent text-white py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-accent-dim transition-colors"
+            className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-90 active:scale-[0.98]"
+            style={{ background: 'linear-gradient(135deg, #3b82f6, #6366f1)' }}
           >
-            <span className="text-xl leading-none font-normal" style={{ marginTop: '-2px' }}>+</span> New Chat
+            <span className="text-lg leading-none font-light">+</span> New Chat
           </button>
         </div>
 
@@ -412,14 +416,20 @@ export default function Chat() {
         <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
           {chatHistory.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-4 animate-fade-in-up pb-[10vh]">
-              <div className="h-[68px] w-[68px] rounded-full mb-6 overflow-hidden flex items-center justify-center bg-[#00d4d4]">
-                <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
+              <div className="relative mb-6">
+                <div className="h-20 w-20 rounded-2xl overflow-hidden shadow-glow" style={{ border: '2px solid rgba(59,130,246,0.35)' }}>
+                  <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
+                </div>
+                <span className="absolute -bottom-1.5 -right-1.5 h-5 w-5 rounded-full bg-accent flex items-center justify-center" style={{ boxShadow: '0 0 10px rgba(59,130,246,0.6)' }}>
+                  <span className="h-2 w-2 rounded-full bg-white" />
+                </span>
               </div>
-              <h2 className="text-[26px] font-bold text-white mb-2 tracking-tight">
+              <div className="mb-1 text-[11px] uppercase tracking-widest text-accent font-semibold">Agent47</div>
+              <h2 className="text-[28px] font-bold text-white mb-3 tracking-tight">
                 How can I help you today?
               </h2>
-              <p className="text-[15px] text-ink-secondary max-w-[420px] leading-relaxed mb-8">
-                I'm Agent47, your Google Workspace assistant. I can help manage your calendar, draft emails, and access your documents.
+              <p className="text-[14px] text-ink-secondary max-w-[380px] leading-relaxed mb-8">
+                Your Google Workspace AI — emails, calendars, docs, and more.
               </p>
 
               {/* Quick Action Cards */}
@@ -483,11 +493,11 @@ export default function Chat() {
 
               {/* Typing indicator */}
               {isSending && (
-                <div className="flex items-start gap-3 mb-5 animate-fade-in-up">
-                  <div className="h-8 w-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
-                    <span className="text-accent font-semibold text-xs">AI</span>
+                <div className="flex items-end gap-3 mb-5 animate-fade-in-up">
+                  <div className="h-8 w-8 rounded-xl overflow-hidden shrink-0 shadow-glow-sm mb-0.5">
+                    <img src="/bot.png" alt="AI" className="h-full w-full object-cover" />
                   </div>
-                  <div className="bg-bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5">
+                  <div className="bg-bg-card border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5 shadow-card">
                     <span className="typing-dot" />
                     <span className="typing-dot" />
                     <span className="typing-dot" />
@@ -501,10 +511,11 @@ export default function Chat() {
         </div>
 
         {/* Input bar */}
-        <div className="px-4 md:px-8 pb-8 pt-2 bg-transparent">
+        <div className="px-4 md:px-8 pb-6 pt-2 bg-transparent">
           <div className="max-w-4xl mx-auto">
             <form onSubmit={handleSend} className="relative flex items-center w-full">
-              <div className="flex-1 flex items-start bg-bg-card rounded-2xl border border-border pl-6 pr-2 pt-[18px] pb-[18px] focus-within:border-accent/50 shadow-sm transition-colors min-h-[64px]">
+              <div className="flex-1 flex items-start bg-bg-card rounded-2xl border border-border pl-6 pr-2 pt-[16px] pb-[16px] focus-within:border-accent/60 focus-within:shadow-glow-sm shadow-card transition-all duration-200 min-h-[60px]"
+                style={{ backdropFilter: 'blur(8px)' }}>
                 <textarea
                   ref={inputRef}
                   value={inputValue}
@@ -532,11 +543,11 @@ export default function Chat() {
                   disabled={isSending}
                   title={isRecording ? 'Stop recording & send' : 'Start voice input'}
                   className={[
-                    "h-10 w-10 shrink-0 flex items-center justify-center rounded-xl mr-1",
+                    "h-9 w-9 shrink-0 flex items-center justify-center rounded-xl mr-1",
                     "transition-all duration-200 bg-transparent cursor-pointer border-none outline-none",
                     isRecording
-                      ? "text-red-400 animate-pulse"
-                      : "text-ink-secondary hover:text-accent hover:scale-105 active:scale-95",
+                      ? "text-red-400 mic-recording"
+                      : "text-ink-secondary hover:text-accent hover:bg-white/5",
                     "disabled:opacity-30 disabled:pointer-events-none",
                   ].join(' ')}
                 >
@@ -546,12 +557,18 @@ export default function Chat() {
                 <button
                   type="submit"
                   disabled={!inputValue.trim() || isSending}
-                  className="send-btn"
+                  title="Send message"
+                  className="h-9 w-9 shrink-0 flex items-center justify-center rounded-xl mr-1 transition-all duration-200 disabled:opacity-30 disabled:pointer-events-none active:scale-90 cursor-pointer"
+                  style={{
+                    background: (!inputValue.trim() || isSending) ? 'transparent' : 'linear-gradient(135deg, #3b82f6, #6366f1)',
+                    border: 'none',
+                    outline: 'none',
+                  }}
                 >
                   {isSending ? (
-                    <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#3b82f6' }} />
+                    <Loader2 className="h-4 w-4 animate-spin text-accent" />
                   ) : (
-                    <Send className="h-5 w-5" />
+                    <Send className="h-4 w-4" style={{ color: inputValue.trim() ? '#ffffff' : '#60a5fa' }} />
                   )}
                 </button>
               </div>
@@ -559,8 +576,8 @@ export default function Chat() {
             {voiceError && (
               <p className="text-center mt-2 text-[11px] text-red-400 leading-tight">{voiceError}</p>
             )}
-            <p className="text-center mt-3 text-[11px] text-ink-muted leading-tight">
-              Agent47 can make mistakes. Verify important information.
+            <p className="text-center mt-2.5 text-[10px] text-ink-muted/60 leading-tight">
+              Agent47 may make mistakes. Always verify important information.
             </p>
           </div>
         </div>
