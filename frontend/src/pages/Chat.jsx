@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare, Mic, MicOff, Trash2, Mail, Calendar, FilePlus } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
-import { chatService, authService, gmailService } from '../services/api';
+import { chatService, authService, gmailService, WS_BASE_URL } from '../services/api';
 import { ChatBubble } from '../components/ChatBubble';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -54,6 +54,7 @@ export default function Chat() {
   const [isRecording, setIsRecording] = useState(false);
   const [voiceError, setVoiceError] = useState('');
   const recognitionRef = useRef(null); // holds MediaRecorder instance
+  const wsRef = useRef(null);          // holds WebSocket for streaming STT
 
   const navigate = useNavigate();
   const messagesEndRef = useRef(null);
@@ -199,11 +200,11 @@ export default function Chat() {
     } finally { setIsSummaryLoading(false); }
   };
 
-  /* ─── Voice-to-text (Google Cloud Speech-to-Text) ──────────── */
+  /* ─── Voice-to-text (Google Cloud Speech-to-Text, WebSocket) ── */
   const handleVoiceToggle = async () => {
     // Stop if already recording
     if (isRecording) {
-      recognitionRef.current?.stop();
+      recognitionRef.current?.stop(); // onstop → sends DONE over WebSocket
       return;
     }
 
@@ -224,81 +225,112 @@ export default function Chat() {
       return;
     }
 
-    // Pick the best supported MIME type
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
-      ? 'audio/ogg;codecs=opus'
-      : 'audio/webm';
+    const ws = new WebSocket(`${WS_BASE_URL}/ws/speech`);
+    wsRef.current = ws;
 
-    const chunks = [];
-    const recorder = new MediaRecorder(stream, { mimeType });
-    recognitionRef.current = recorder;
+    // Accumulate final segments (interim are shown for visual feedback only)
+    let finalAccumulated = '';
 
-    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    ws.onmessage = async (event) => {
+      let data;
+      try { data = JSON.parse(event.data); } catch { return; }
 
-    recorder.onstart = () => setIsRecording(true);
-
-    recorder.onstop = async () => {
-      setIsRecording(false);
-      stream.getTracks().forEach((t) => t.stop());
-
-      const blob = new Blob(chunks, { type: mimeType });
-      if (blob.size < 100) return; // nothing recorded
-
-      const formData = new FormData();
-      formData.append('audio', blob, 'recording.webm');
-
-      let transcript = '';
-      try {
-        const res = await fetch('/api/speech', { method: 'POST', body: formData });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        transcript = (data.transcript || '').trim();
-      } catch (err) {
-        setVoiceError(`Transcription failed: ${err.message}`);
+      if (data.type === 'error') {
+        setVoiceError(`Speech error: ${data.message}`);
         setTimeout(() => setVoiceError(''), 4000);
+        ws.close();
+        stream.getTracks().forEach((t) => t.stop());
         return;
       }
 
-      if (!transcript) {
-        setVoiceError('No speech detected. Please try again.');
-        setTimeout(() => setVoiceError(''), 3000);
-        return;
-      }
-
-      // Auto-send the transcript
-      const userMessage = { text: transcript, isUser: true, id: Date.now() };
-      addMessage(userMessage);
-      setInputValue('');
-      setIsSending(true);
-      try {
-        const response = await chatService.runAgent(userId, transcript, sessionId || '');
-        if (response.session_id && response.session_id !== sessionId) {
-          updateSessionId(sessionId, response.session_id);
+      if (data.type === 'interim') {
+        // Live preview: show current interim appended to locked final segments
+        setInputValue(
+          (finalAccumulated ? finalAccumulated + ' ' : '') + data.transcript
+        );
+      } else if (data.type === 'final') {
+        finalAccumulated += (finalAccumulated ? ' ' : '') + data.transcript.trim();
+        setInputValue(finalAccumulated);
+      } else if (data.type === 'done') {
+        ws.close();
+        const transcript = finalAccumulated.trim();
+        if (!transcript) {
+          setInputValue('');
+          setVoiceError('No speech detected. Please try again.');
+          setTimeout(() => setVoiceError(''), 3000);
+          return;
         }
-        addMessage({ text: response.response, isUser: false, id: Date.now() + 1 });
-      } catch (error) {
-        addMessage({
-          text: `Error: ${error.response?.data?.message || error.message}`,
-          isUser: false, id: Date.now() + 1, isError: true,
-        });
-      } finally {
-        setIsSending(false);
+        // Auto-send
+        const userMessage = { text: transcript, isUser: true, id: Date.now() };
+        addMessage(userMessage);
+        setInputValue('');
+        setIsSending(true);
+        try {
+          const response = await chatService.runAgent(userId, transcript, sessionId || '');
+          if (response.session_id && response.session_id !== sessionId) {
+            updateSessionId(sessionId, response.session_id);
+          }
+          addMessage({ text: response.response, isUser: false, id: Date.now() + 1 });
+        } catch (error) {
+          addMessage({
+            text: `Error: ${error.response?.data?.message || error.message}`,
+            isUser: false, id: Date.now() + 1, isError: true,
+          });
+        } finally {
+          setIsSending(false);
+        }
       }
     };
 
-    recorder.onerror = () => {
+    ws.onerror = () => {
       setIsRecording(false);
-      setVoiceError('Recording error. Please try again.');
+      setVoiceError('WebSocket connection failed. Please try again.');
       setTimeout(() => setVoiceError(''), 3000);
+      stream.getTracks().forEach((t) => t.stop());
     };
 
-    // Record for up to 30 seconds, then auto-stop
-    recorder.start();
-    setTimeout(() => {
-      if (recorder.state === 'recording') recorder.stop();
-    }, 30000);
+    ws.onclose = () => setIsRecording(false);
+
+    ws.onopen = () => {
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+        ? 'audio/ogg;codecs=opus'
+        : 'audio/webm';
+
+      let recorder;
+      try {
+        recorder = new MediaRecorder(stream, { mimeType });
+      } catch {
+        setVoiceError('Audio recording not supported in this browser.');
+        setTimeout(() => setVoiceError(''), 3000);
+        ws.close();
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      recognitionRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data);
+      };
+      recorder.onstart = () => setIsRecording(true);
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (ws.readyState === WebSocket.OPEN) ws.send('DONE');
+      };
+      recorder.onerror = () => {
+        setIsRecording(false);
+        setVoiceError('Recording error. Please try again.');
+        setTimeout(() => setVoiceError(''), 3000);
+        ws.close();
+      };
+
+      // Stream 250 ms chunks for real-time feel; auto-stop after 30 s
+      recorder.start(250);
+      setTimeout(() => {
+        if (recorder.state === 'recording') recorder.stop();
+      }, 30000);
+    };
   };
 
   const handleLogout = () => { logout(); navigate('/'); };

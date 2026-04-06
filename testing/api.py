@@ -8,13 +8,16 @@ Or via ADK's built-in server:
     adk api_server testing
 """
 
+import asyncio
+import queue
+import threading
 import uuid
 import json
 import re
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -581,54 +584,98 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
-# Speech-to-Text
+# Speech-to-Text — WebSocket streaming
 # ---------------------------------------------------------------------------
 
-@app.post("/speech")
-async def speech_to_text(audio: UploadFile = File(...), language: str = "en-US"):
-    """Transcribe uploaded audio using Google Cloud Speech-to-Text.
+@app.websocket("/ws/speech")
+async def speech_websocket(websocket: WebSocket, language: str = "en-US"):
+    """Real-time speech transcription via Google Cloud Speech-to-Text streaming.
 
-    Accepts any audio format supported by the MediaRecorder API
-    (webm/opus, ogg/opus). Returns ``{transcript: "..."}``.
+    Protocol:
+      · Client → Server: binary audio frames (webm/opus chunks, 250 ms intervals)
+      · Client → Server: text ``"DONE"`` to signal end of audio
+      · Server → Client: ``{"type":"interim","transcript":"..."}``
+      · Server → Client: ``{"type":"final","transcript":"..."}``
+      · Server → Client: ``{"type":"done"}``  — all transcription finished
+      · Server → Client: ``{"type":"error","message":"..."}``
     """
-    from google.cloud import speech as gcp_speech  # lazy import
+    await websocket.accept()
 
-    audio_bytes = await audio.read()
-    if not audio_bytes:
-        raise HTTPException(status_code=400, detail="Empty audio file.")
+    audio_queue: queue.Queue = queue.Queue()
+    result_queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
 
-    client = gcp_speech.SpeechClient()
+    def audio_generator():
+        from google.cloud import speech as gcp_speech
+        while True:
+            chunk = audio_queue.get()
+            if chunk is None:
+                break
+            yield gcp_speech.StreamingRecognizeRequest(audio_content=chunk)
 
-    # Detect encoding from MIME type; fall back to WEBM_OPUS
-    mime = (audio.content_type or "").lower()
-    if "ogg" in mime:
-        encoding = gcp_speech.RecognitionConfig.AudioEncoding.OGG_OPUS
-        sample_rate = 48000
-    else:
-        # webm/opus — use encoding=WEBM_OPUS (auto sample-rate)
-        encoding = gcp_speech.RecognitionConfig.AudioEncoding.WEBM_OPUS
-        sample_rate = 48000
+    def run_streaming():
+        try:
+            from google.cloud import speech as gcp_speech
+            client = gcp_speech.SpeechClient()
+            streaming_config = gcp_speech.StreamingRecognitionConfig(
+                config=gcp_speech.RecognitionConfig(
+                    encoding=gcp_speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
+                    sample_rate_hertz=48000,
+                    language_code=language,
+                    enable_automatic_punctuation=True,
+                ),
+                interim_results=True,
+            )
+            for response in client.streaming_recognize(streaming_config, audio_generator()):
+                for result in response.results:
+                    if result.alternatives:
+                        msg = {
+                            "type": "final" if result.is_final else "interim",
+                            "transcript": result.alternatives[0].transcript,
+                        }
+                        asyncio.run_coroutine_threadsafe(result_queue.put(msg), loop)
+        except Exception as exc:
+            asyncio.run_coroutine_threadsafe(
+                result_queue.put({"type": "error", "message": str(exc)}), loop
+            )
+        finally:
+            asyncio.run_coroutine_threadsafe(
+                result_queue.put({"type": "done"}), loop
+            )
 
-    config = gcp_speech.RecognitionConfig(
-        encoding=encoding,
-        sample_rate_hertz=sample_rate,
-        language_code=language,
-        enable_automatic_punctuation=True,
-    )
-    audio_obj = gcp_speech.RecognitionAudio(content=audio_bytes)
+    thread = threading.Thread(target=run_streaming, daemon=True)
+    thread.start()
+
+    async def forward_results():
+        while True:
+            msg = await result_queue.get()
+            try:
+                await websocket.send_json(msg)
+            except Exception:
+                break
+            if msg.get("type") in ("done", "error"):
+                break
+
+    forwarder = asyncio.create_task(forward_results())
 
     try:
-        response = client.recognize(config=config, audio=audio_obj)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Speech API error: {exc}") from exc
-
-    transcript = " ".join(
-        result.alternatives[0].transcript
-        for result in response.results
-        if result.alternatives
-    ).strip()
-
-    return {"transcript": transcript}
+        while True:
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                break
+            if "bytes" in message and message["bytes"]:
+                audio_queue.put(message["bytes"])
+            elif message.get("text") == "DONE":
+                audio_queue.put(None)  # end of audio — let streaming finish
+                break
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        audio_queue.put(None)  # guarantee streaming thread terminates
+        await forwarder
+        thread.join(timeout=10)
 
 
 @app.post("/run", response_model=RunResponse)

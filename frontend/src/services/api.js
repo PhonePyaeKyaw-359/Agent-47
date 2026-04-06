@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+const HTTP_BASE = 'https://workspace-ai-400859143635.asia-southeast1.run.app';
+export const WS_BASE_URL = HTTP_BASE.replace(/^http/, 'ws');  // wss://...
+
 const api = axios.create({
-  baseURL: 'https://workspace-ai-400859143635.asia-southeast1.run.app',
+  baseURL: HTTP_BASE,
   headers: {
     'Content-Type': 'application/json',
   },
