@@ -90,7 +90,9 @@
 .quick-action-card {
   background: none;
   outline: none;
-  white-space: nowrap;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 .quick-action-card:hover {
   filter: brightness(1.15);
