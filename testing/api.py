@@ -138,6 +138,114 @@ def _extract_first_json(text: str) -> dict:
     return json.loads(match.group(0))
 
 
+def _string_contains_placeholder(value: object) -> bool:
+    """Detect obviously fabricated placeholder/example content."""
+    if not isinstance(value, str):
+        return False
+
+    normalized = value.strip().lower()
+    placeholder_markers = (
+        "example.com",
+        "simulated",
+        "placeholder",
+        "mock data",
+        "sample data",
+        "project alpha",
+        "production server down",
+        "weekly team update",
+        "latest tech trends",
+        "pm@example.com",
+        "ops@example.com",
+        "manager@example.com",
+        "designer@example.com",
+    )
+    if normalized in {"...", "unknown", "n/a", "(no subject)"}:
+        return True
+    return any(marker in normalized for marker in placeholder_markers)
+
+
+def _validate_triage_payload(payload: dict) -> None:
+    """Reject fabricated or placeholder triage results."""
+    triage = payload.get("triage")
+    if not isinstance(triage, dict):
+        raise ValueError("Triage payload missing triage buckets")
+
+    analyzed_count = 0
+    for bucket in ("urgent", "actionable", "fyi", "can-wait"):
+        items = triage.get(bucket, [])
+        if not isinstance(items, list):
+            raise ValueError(f"Triage bucket '{bucket}' is not a list")
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError(f"Triage item in '{bucket}' is not an object")
+            for required in ("message_id", "thread_id", "subject", "from"):
+                value = item.get(required)
+                if not value or _string_contains_placeholder(value):
+                    raise ValueError(
+                        f"Triage returned placeholder or missing field '{required}'"
+                    )
+            analyzed_count += 1
+
+    notes = payload.get("notes", "")
+    if _string_contains_placeholder(notes):
+        raise ValueError("Triage notes contain placeholder/example text")
+
+    totals = payload.get("totals", {})
+    if isinstance(totals, dict) and "analyzed" in totals:
+        try:
+            if int(totals["analyzed"]) != analyzed_count:
+                raise ValueError("Triage totals do not match analyzed items")
+        except (TypeError, ValueError):
+            raise ValueError("Triage totals.analyzed is invalid")
+
+
+def _validate_summarize_payload(payload: dict) -> None:
+    """Reject fabricated or placeholder summary results."""
+    summaries = payload.get("summaries")
+    if not isinstance(summaries, list):
+        raise ValueError("Summary payload missing summaries list")
+
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            raise ValueError("Summary item is not an object")
+        for required in ("thread_id", "subject"):
+            value = summary.get(required)
+            if not value or _string_contains_placeholder(value):
+                raise ValueError(
+                    f"Summary returned placeholder or missing field '{required}'"
+                )
+
+        participants = summary.get("participants", [])
+        if not isinstance(participants, list):
+            raise ValueError("Summary participants is not a list")
+        for participant in participants:
+            if _string_contains_placeholder(participant):
+                raise ValueError("Summary contains placeholder participant data")
+
+        for field in (
+            "key_facts",
+            "decisions",
+            "open_questions",
+            "next_steps_for_me",
+            "waiting_on_others",
+        ):
+            values = summary.get(field, [])
+            if not isinstance(values, list):
+                raise ValueError(f"Summary field '{field}' is not a list")
+            for value in values:
+                if _string_contains_placeholder(value):
+                    raise ValueError(
+                        f"Summary field '{field}' contains placeholder/example text"
+                    )
+
+    overall_actions = payload.get("overall_actions", [])
+    if not isinstance(overall_actions, list):
+        raise ValueError("Summary overall_actions is not a list")
+    for value in overall_actions:
+        if _string_contains_placeholder(value):
+            raise ValueError("Summary overall_actions contains placeholder text")
+
+
 async def _run_user_agent_text(user_id: str, tokens: dict, prompt: str) -> str:
     """Run a one-shot prompt for a user and return final text response."""
     runner = _get_runner(user_id, tokens=tokens)
@@ -310,7 +418,7 @@ async def gmail_triage(request: GmailTriageRequest):
 
     prompt = (
         "You are running an automated Gmail triage workflow.\n"
-        "Use Gmail tools to analyze the inbox and return STRICT JSON only.\n\n"
+        "Delegate to gmail_agent and use Gmail tools to analyze the inbox. Return STRICT JSON only.\n\n"
         f"Search query: {request.query}\n"
         f"Max messages to analyze: {request.max_messages}\n"
         f"Apply labels: {request.apply_labels}\n\n"
@@ -320,7 +428,11 @@ async def gmail_triage(request: GmailTriageRequest):
         "3) Score urgency based on: deadlines, direct asks, VIP sender, blockers.\n"
         "4) Classify each message into exactly one bucket: urgent, actionable, fyi, can-wait.\n"
         "5) If Apply labels is true, ensure labels exist and apply them to each message.\n"
-        "6) Keep each rationale short.\n\n"
+        "6) Keep each rationale short.\n"
+        "7) NEVER invent or simulate emails, senders, subjects, IDs, or notes.\n"
+        "8) NEVER use placeholder values such as '...', 'example.com', or sample/demo content.\n"
+        "9) Every returned message_id and thread_id must come from actual Gmail results.\n"
+        "10) If Gmail tools fail or no real messages match, return empty buckets and analyzed=0.\n\n"
         "Output JSON schema:\n"
         "{\n"
         "  \"triage\": {\n"
@@ -337,9 +449,10 @@ async def gmail_triage(request: GmailTriageRequest):
     raw = await _run_user_agent_text(user_id=user_id, tokens=tokens, prompt=prompt)
     try:
         payload = _extract_first_json(raw)
+        _validate_triage_payload(payload)
     except Exception as exc:
         raise HTTPException(
-            status_code=500,
+            status_code=502,
             detail={
                 "error": "invalid_model_output",
                 "message": str(exc),
@@ -368,7 +481,7 @@ async def gmail_summarize(request: GmailSummarizeRequest):
 
     prompt = (
         "You are running a Gmail thread summarizer workflow.\n"
-        "Use Gmail tools and return STRICT JSON only.\n\n"
+        "Delegate to gmail_agent and use Gmail tools. Return STRICT JSON only.\n\n"
         f"Search query: {request.query}\n"
         f"Max threads to summarize: {request.max_threads}\n\n"
         "Rules:\n"
@@ -376,7 +489,11 @@ async def gmail_summarize(request: GmailSummarizeRequest):
         "2) Use gmail.get to inspect full message contents.\n"
         "3) Group by thread, then summarize the most important threads first.\n"
         "4) For each thread extract: key facts, decisions, open questions, next steps for me, waiting on others.\n"
-        "5) Keep bullets short and concrete.\n\n"
+        "5) Keep bullets short and concrete.\n"
+        "6) NEVER invent or simulate threads, participants, actions, or summary bullets.\n"
+        "7) NEVER use placeholder values such as '...', 'example.com', or sample/demo content.\n"
+        "8) Every returned thread_id must come from actual Gmail results.\n"
+        "9) If Gmail tools fail or no real threads match, return an empty summaries array.\n\n"
         "Output JSON schema:\n"
         "{\n"
         "  \"summaries\": [\n"
@@ -398,9 +515,10 @@ async def gmail_summarize(request: GmailSummarizeRequest):
     raw = await _run_user_agent_text(user_id=user_id, tokens=tokens, prompt=prompt)
     try:
         payload = _extract_first_json(raw)
+        _validate_summarize_payload(payload)
     except Exception as exc:
         raise HTTPException(
-            status_code=500,
+            status_code=502,
             detail={
                 "error": "invalid_model_output",
                 "message": str(exc),
