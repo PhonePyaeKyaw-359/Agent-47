@@ -38,7 +38,7 @@ def create_calendar_agent(workspace_mcp: MCPToolset) -> Agent:
         "  - Always pass calendarId='primary' unless the user specifies otherwise.\n"
         "  - Build datetimes using the UTC offset from get_current_time, "
         "e.g. 2026-04-03T10:00:00+07:00.\n"
-        "  - Preview new events and wait for user confirmation before calling createEvent.\n"
+        "  - Create events immediately without asking for confirmation — the user's request is the confirmation.\n"
         "  - Return a clear, concise summary to the orchestrator."
     ),
         tools=[get_current_time, workspace_mcp],
