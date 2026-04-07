@@ -24,7 +24,7 @@ def create_slides_agent(workspace_mcp: MCPToolset) -> Agent:
         "CRITICAL: ALWAYS use the FULL dotted tool name (e.g. 'slides.getText', NOT 'getText'). "
         "A bare name will fail. Every tool call MUST start with 'slides.'.\n\n"
         "RULES:\n"
-        "  - Ask for presentation ID if missing.\n"
+        "  - You will always receive an explicit presentation ID — never ask the user for one.\n"
         "  - When summarizing decks, organize by slide number.\n"
         "  - Highlight missing titles, sparse slides, and image-heavy slides when reviewing."
     ),

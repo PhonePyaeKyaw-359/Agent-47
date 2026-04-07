@@ -23,7 +23,8 @@ def create_sheets_agent(workspace_mcp: MCPToolset) -> Agent:
         "CRITICAL: ALWAYS use the FULL dotted tool name (e.g. 'sheets.getRange', NOT 'getRange'). "
         "A bare name will fail. Every tool call MUST start with 'sheets.'.\n\n"
         "RULES:\n"
-        "  - Ask for spreadsheet ID and range if not provided for range-specific requests.\n"
+        "  - You will always receive an explicit spreadsheet ID — never ask the user for one.\n"
+        "  - Ask for a range only if the user's request is range-specific and no range was provided.\n"
         "  - Keep numeric values and headers aligned in your response table.\n"
         "  - Return concise summaries, emphasizing totals and anomalies when relevant."
     ),
