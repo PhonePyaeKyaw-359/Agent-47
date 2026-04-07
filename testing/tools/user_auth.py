@@ -1,7 +1,7 @@
 """
 Per-user OAuth token management.
 
-Stores Google OAuth tokens per user_id in SQLite with Fernet encryption.
+Stores Google OAuth tokens per user_id in PostgreSQL with Fernet encryption.
 Handles:
   - OAuth URL generation (consent screen)
   - Callback processing (code → tokens via cloud function)
@@ -15,13 +15,13 @@ import hmac
 import json
 import os
 import secrets
-import sqlite3
 import time
-from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 
 import httpx
+import psycopg2
+import psycopg2.extras
 
 # ---------------------------------------------------------------------------
 # Configuration — read from env, same as workspace MCP server
@@ -63,24 +63,21 @@ DEFAULT_SCOPES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Encryption — derive key from a per-installation secret
+# Encryption — derive key from TOKEN_ENCRYPTION_KEY env var (or generate once)
 # ---------------------------------------------------------------------------
-
-_DB_PATH = Path(__file__).parent.parent / "data.db"
-_SECRET_PATH = Path(__file__).parent.parent / ".token_key"
 
 TOKEN_EXPIRY_BUFFER_S = 5 * 60  # refresh 5 min before expiry
 
 
 def _get_fernet_key() -> bytes:
-    """Load or create a 32-byte secret, then derive a Fernet key."""
-    if _SECRET_PATH.exists():
-        raw = _SECRET_PATH.read_bytes()
+    """Derive a stable Fernet key from TOKEN_ENCRYPTION_KEY env var."""
+    raw_b64 = os.environ.get("TOKEN_ENCRYPTION_KEY", "")
+    if raw_b64:
+        raw = base64.urlsafe_b64decode(raw_b64 + "=" * (-len(raw_b64) % 4))
     else:
-        raw = secrets.token_bytes(32)
-        _SECRET_PATH.write_bytes(raw)
-        _SECRET_PATH.chmod(0o600)
-    # Fernet needs 32 url-safe base64 bytes
+        # Fall back to a fixed seed so tokens survive in-container restarts
+        # (will break across redeploys without the env var set)
+        raw = hashlib.sha256(b"agent47-default-key").digest()
     return base64.urlsafe_b64encode(hashlib.sha256(raw).digest())
 
 
@@ -102,35 +99,38 @@ def _decrypt(ciphertext: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# SQLite setup
+# PostgreSQL setup
 # ---------------------------------------------------------------------------
 
+_DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(str(_DB_PATH))
-    c.row_factory = sqlite3.Row
-    return c
+
+def _conn() -> psycopg2.extensions.connection:
+    conn = psycopg2.connect(_DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    return conn
 
 
 def _init() -> None:
     c = _conn()
-    c.executescript(
+    cur = c.cursor()
+    cur.execute(
         """
         CREATE TABLE IF NOT EXISTS user_tokens (
             user_id       TEXT PRIMARY KEY,
             tokens_enc    TEXT NOT NULL,
-            created_at    REAL NOT NULL,
-            updated_at    REAL NOT NULL
+            created_at    DOUBLE PRECISION NOT NULL,
+            updated_at    DOUBLE PRECISION NOT NULL
         );
         CREATE TABLE IF NOT EXISTS oauth_states (
             state         TEXT PRIMARY KEY,
             user_id       TEXT NOT NULL,
             csrf          TEXT NOT NULL,
-            created_at    REAL NOT NULL
+            created_at    DOUBLE PRECISION NOT NULL
         );
         """
     )
     c.commit()
+    cur.close()
     c.close()
 
 
@@ -147,24 +147,27 @@ def save_user_tokens(user_id: str, tokens: dict) -> None:
     enc = _encrypt(json.dumps(tokens))
     now = time.time()
     c = _conn()
-    c.execute(
+    cur = c.cursor()
+    cur.execute(
         """
         INSERT INTO user_tokens (user_id, tokens_enc, created_at, updated_at)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET tokens_enc=excluded.tokens_enc, updated_at=excluded.updated_at
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT(user_id) DO UPDATE SET tokens_enc=EXCLUDED.tokens_enc, updated_at=EXCLUDED.updated_at
         """,
         (user_id, enc, now, now),
     )
     c.commit()
+    cur.close()
     c.close()
 
 
 def get_user_tokens(user_id: str) -> Optional[dict]:
     """Return decrypted tokens dict or None."""
     c = _conn()
-    row = c.execute(
-        "SELECT tokens_enc FROM user_tokens WHERE user_id=?", (user_id,)
-    ).fetchone()
+    cur = c.cursor()
+    cur.execute("SELECT tokens_enc FROM user_tokens WHERE user_id=%s", (user_id,))
+    row = cur.fetchone()
+    cur.close()
     c.close()
     if row is None:
         return None
@@ -173,14 +176,19 @@ def get_user_tokens(user_id: str) -> Optional[dict]:
 
 def delete_user_tokens(user_id: str) -> None:
     c = _conn()
-    c.execute("DELETE FROM user_tokens WHERE user_id=?", (user_id,))
+    cur = c.cursor()
+    cur.execute("DELETE FROM user_tokens WHERE user_id=%s", (user_id,))
     c.commit()
+    cur.close()
     c.close()
 
 
 def list_authenticated_users() -> list[str]:
     c = _conn()
-    rows = c.execute("SELECT user_id FROM user_tokens").fetchall()
+    cur = c.cursor()
+    cur.execute("SELECT user_id FROM user_tokens")
+    rows = cur.fetchall()
+    cur.close()
     c.close()
     return [r["user_id"] for r in rows]
 
@@ -192,23 +200,30 @@ def list_authenticated_users() -> list[str]:
 
 def _save_oauth_state(state_key: str, user_id: str, csrf: str) -> None:
     c = _conn()
-    c.execute(
-        "INSERT OR REPLACE INTO oauth_states VALUES (?,?,?,?)",
+    cur = c.cursor()
+    cur.execute(
+        """
+        INSERT INTO oauth_states (state, user_id, csrf, created_at)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT(state) DO UPDATE SET user_id=EXCLUDED.user_id, csrf=EXCLUDED.csrf, created_at=EXCLUDED.created_at
+        """,
         (state_key, user_id, csrf, time.time()),
     )
     c.commit()
+    cur.close()
     c.close()
 
 
 def _pop_oauth_state(state_key: str) -> Optional[dict]:
     """Retrieve and delete an oauth_state entry (one-time use)."""
     c = _conn()
-    row = c.execute(
-        "SELECT * FROM oauth_states WHERE state=?", (state_key,)
-    ).fetchone()
+    cur = c.cursor()
+    cur.execute("SELECT * FROM oauth_states WHERE state=%s", (state_key,))
+    row = cur.fetchone()
     if row:
-        c.execute("DELETE FROM oauth_states WHERE state=?", (state_key,))
+        cur.execute("DELETE FROM oauth_states WHERE state=%s", (state_key,))
         c.commit()
+    cur.close()
     c.close()
     return dict(row) if row else None
 
@@ -216,8 +231,9 @@ def _pop_oauth_state(state_key: str) -> Optional[dict]:
 def _cleanup_stale_states(max_age_s: float = 600) -> None:
     """Remove states older than max_age_s."""
     c = _conn()
-    c.execute(
-        "DELETE FROM oauth_states WHERE created_at < ?",
+    cur = c.cursor()
+    cur.execute(
+        "DELETE FROM oauth_states WHERE created_at < %s",
         (time.time() - max_age_s,),
     )
     c.commit()
