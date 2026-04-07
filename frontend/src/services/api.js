@@ -26,10 +26,19 @@ export const authService = {
 
 export const chatService = {
   runAgent: async (userId, message, sessionId = "") => {
+    // Get browser UTC offset, e.g. -420 minutes for UTC+7 → "+07:00"
+    const rawOffset = -new Date().getTimezoneOffset(); // minutes, positive = ahead of UTC
+    const sign = rawOffset >= 0 ? "+" : "-";
+    const absMinutes = Math.abs(rawOffset);
+    const hh = String(Math.floor(absMinutes / 60)).padStart(2, "0");
+    const mm = String(absMinutes % 60).padStart(2, "0");
+    const timezoneOffset = `${sign}${hh}:${mm}`;
+
     const response = await api.post(`/run`, {
       user_id: userId,
       message: message,
-      session_id: sessionId
+      session_id: sessionId,
+      timezone_offset: timezoneOffset,
     });
     return response.data;
   }

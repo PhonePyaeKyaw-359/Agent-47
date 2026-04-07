@@ -35,6 +35,7 @@ from .tools.user_auth import (
     refresh_tokens_if_needed,
     delete_user_tokens,
 )
+from .tools.time_tools import set_user_timezone
 
 APP_NAME = "agent47"
 session_service = InMemorySessionService()
@@ -114,6 +115,7 @@ class RunRequest(BaseModel):
     message: str
     session_id: str = ""
     user_id: str = "default_user"
+    timezone_offset: str = ""  # e.g. "+07:00" from the browser
 
 
 class RunResponse(BaseModel):
@@ -664,6 +666,10 @@ async def run(request: RunRequest):
     follow-up requests to continue the same conversation.
     """
     user_id = request.user_id
+
+    # Apply the user's timezone so get_current_time() returns the correct local time
+    if request.timezone_offset:
+        set_user_timezone(request.timezone_offset)
 
     # ── 1. Check / refresh tokens ───────────────────────────────────
     tokens = get_user_tokens(user_id)
