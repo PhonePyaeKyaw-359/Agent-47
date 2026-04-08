@@ -24,6 +24,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai.errors import ClientError
 from google.genai.types import Content, Part
+from mcp.shared.exceptions import McpError
 
 from .agent import get_root_agent, invalidate_user_agent
 from .agents.workspace_mcp import invalidate_user_toolset
@@ -39,29 +40,6 @@ from .tools.time_tools import set_user_timezone
 
 APP_NAME = "agent47"
 session_service = InMemorySessionService()
-
-# ---------------------------------------------------------------------------
-# Email compose intent detection — drives style-selection guardrail
-# ---------------------------------------------------------------------------
-_EMAIL_COMPOSE_VERBS = (
-    "send email", "send an email", "compose email", "write email",
-    "draft email", "email to", "send a message to", "write a message to",
-    "write me an email", "create an email", "create email",
-)
-_EMAIL_STYLE_TOKENS = (
-    "normal", "office", "decorated", "formal", "casual", "html email",
-    "plain text", "style 1", "style 2", "style 3",
-)
-
-
-def _detect_email_compose_intent(message: str) -> bool:
-    lower = message.lower()
-    return any(kw in lower for kw in _EMAIL_COMPOSE_VERBS)
-
-
-def _email_style_specified(message: str) -> bool:
-    lower = message.lower()
-    return any(token in lower for token in _EMAIL_STYLE_TOKENS)
 
 # Per-user Runner cache  (user_id → Runner)
 _user_runners: dict[str, Runner] = {}
@@ -92,7 +70,7 @@ app = FastAPI(
     title="Agent47",
     description=(
         "Multi-agent system for Google Workspace with per-user OAuth. "
-        "Supports Google Calendar, Gmail, Google Chat, Google Docs, "
+            "Supports Google Calendar, Google Chat, Google Docs, "
         "Google Sheets, Google Slides, task tracking, and notes."
     ),
     version="2.0.0",
@@ -122,34 +100,6 @@ class RunResponse(BaseModel):
     response: str
     session_id: str
     user_id: str
-
-
-class GmailTriageRequest(BaseModel):
-    user_id: str
-    query: str = "in:inbox newer_than:7d"
-    max_messages: int = 25
-    apply_labels: bool = True
-
-
-class GmailTriageResponse(BaseModel):
-    user_id: str
-    query: str
-    triage: dict
-    totals: dict
-    notes: str = ""
-
-
-class GmailSummarizeRequest(BaseModel):
-    user_id: str
-    query: str = "in:inbox newer_than:14d"
-    max_threads: int = 5
-
-
-class GmailSummarizeResponse(BaseModel):
-    user_id: str
-    query: str
-    summaries: list[dict]
-    overall_actions: list[str]
 
 
 def _extract_first_json(text: str) -> dict:
@@ -454,134 +404,6 @@ async def auth_logout(user_id: str):
 
 
 # ---------------------------------------------------------------------------
-# Gmail productivity endpoints
-# ---------------------------------------------------------------------------
-
-@app.post("/gmail/triage", response_model=GmailTriageResponse)
-async def gmail_triage(request: GmailTriageRequest):
-    """AI triage: classify inbox emails and optionally apply labels."""
-    user_id = request.user_id
-    tokens = _get_and_refresh_tokens_or_401(user_id)
-
-    prompt = (
-        "You are running an automated Gmail triage workflow.\n"
-        "Delegate to gmail_agent and use Gmail tools to analyze the inbox. Return STRICT JSON only.\n\n"
-        f"Search query: {request.query}\n"
-        f"Max messages to analyze: {request.max_messages}\n"
-        f"Apply labels: {request.apply_labels}\n\n"
-        "Rules:\n"
-        "1) Use gmail.search to fetch candidate messages.\n"
-        "2) Use gmail.get for each message you analyze.\n"
-        "3) Score urgency based on: deadlines, direct asks, VIP sender, blockers.\n"
-        "4) Classify each message into exactly one bucket: urgent, actionable, fyi, can-wait.\n"
-        "5) If Apply labels is true, ensure labels exist and apply them to each message.\n"
-        "6) Keep each rationale short.\n"
-        "7) NEVER invent or simulate emails, senders, subjects, IDs, or notes.\n"
-        "8) NEVER use placeholder values such as '...', 'example.com', or sample/demo content.\n"
-        "9) Every returned message_id and thread_id must come from actual Gmail results.\n"
-        "10) If Gmail tools fail or no real messages match, return empty buckets and analyzed=0.\n\n"
-        "Output JSON schema:\n"
-        "{\n"
-        "  \"triage\": {\n"
-        "    \"urgent\": [{\"message_id\":\"...\",\"thread_id\":\"...\",\"subject\":\"...\",\"from\":\"...\",\"urgency_score\":90,\"rationale\":\"...\"}],\n"
-        "    \"actionable\": [],\n"
-        "    \"fyi\": [],\n"
-        "    \"can-wait\": []\n"
-        "  },\n"
-        "  \"totals\": {\"urgent\":0,\"actionable\":0,\"fyi\":0,\"can-wait\":0,\"analyzed\":0},\n"
-        "  \"notes\": \"short note\"\n"
-        "}"
-    )
-
-    raw = await _run_user_agent_text(user_id=user_id, tokens=tokens, prompt=prompt)
-    try:
-        payload = _extract_first_json(raw)
-        _validate_triage_payload(payload)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "error": "invalid_model_output",
-                "message": str(exc),
-                "raw": raw[:3000],
-            },
-        )
-
-    triage = payload.get("triage", {})
-    totals = payload.get("totals", {})
-    notes = payload.get("notes", "")
-
-    return GmailTriageResponse(
-        user_id=user_id,
-        query=request.query,
-        triage=triage,
-        totals=totals,
-        notes=notes,
-    )
-
-
-@app.post("/gmail/summarize", response_model=GmailSummarizeResponse)
-async def gmail_summarize(request: GmailSummarizeRequest):
-    """AI summarize: extract facts, decisions, open questions, and actions."""
-    user_id = request.user_id
-    tokens = _get_and_refresh_tokens_or_401(user_id)
-
-    prompt = (
-        "You are running a Gmail thread summarizer workflow.\n"
-        "Delegate to gmail_agent and use Gmail tools. Return STRICT JSON only.\n\n"
-        f"Search query: {request.query}\n"
-        f"Max threads to summarize: {request.max_threads}\n\n"
-        "Rules:\n"
-        "1) Use gmail.search for candidate messages/threads.\n"
-        "2) Use gmail.get to inspect full message contents.\n"
-        "3) Group by thread, then summarize the most important threads first.\n"
-        "4) For each thread extract: key facts, decisions, open questions, next steps for me, waiting on others.\n"
-        "5) Keep bullets short and concrete.\n"
-        "6) NEVER invent or simulate threads, participants, actions, or summary bullets.\n"
-        "7) NEVER use placeholder values such as '...', 'example.com', or sample/demo content.\n"
-        "8) Every returned thread_id must come from actual Gmail results.\n"
-        "9) If Gmail tools fail or no real threads match, return an empty summaries array.\n\n"
-        "Output JSON schema:\n"
-        "{\n"
-        "  \"summaries\": [\n"
-        "    {\n"
-        "      \"thread_id\": \"...\",\n"
-        "      \"subject\": \"...\",\n"
-        "      \"participants\": [\"...\"],\n"
-        "      \"key_facts\": [\"...\"],\n"
-        "      \"decisions\": [\"...\"],\n"
-        "      \"open_questions\": [\"...\"],\n"
-        "      \"next_steps_for_me\": [\"...\"],\n"
-        "      \"waiting_on_others\": [\"...\"]\n"
-        "    }\n"
-        "  ],\n"
-        "  \"overall_actions\": [\"...\"]\n"
-        "}"
-    )
-
-    raw = await _run_user_agent_text(user_id=user_id, tokens=tokens, prompt=prompt)
-    try:
-        payload = _extract_first_json(raw)
-        _validate_summarize_payload(payload)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "error": "invalid_model_output",
-                "message": str(exc),
-                "raw": raw[:3000],
-            },
-        )
-
-    return GmailSummarizeResponse(
-        user_id=user_id,
-        query=request.query,
-        summaries=payload.get("summaries", []),
-        overall_actions=payload.get("overall_actions", []),
-    )
-
-
-# ---------------------------------------------------------------------------
 # Core endpoints
 # ---------------------------------------------------------------------------
 
@@ -718,19 +540,7 @@ async def run(request: RunRequest):
             session_id=session_id,
         )
 
-    # Email guardrail: remind agent never to invent recipient addresses
     message_text = request.message
-    if _detect_email_compose_intent(message_text):
-        message_text = (
-            "[POLICY] To compose an email you need exactly three things from the user: "
-            "(1) the recipient's real email address, "
-            "(2) the reason/purpose of the email, "
-            "(3) what nickname to use for the recipient. "
-            "Ask for ALL missing items in one numbered list. "
-            "NEVER invent placeholder addresses. "
-            "Do not ask for subject or body separately.\n\n"
-            + message_text
-        )
     content = Content(role="user", parts=[Part(text=message_text)])
     final_response = ""
 
@@ -766,6 +576,26 @@ async def run(request: RunRequest):
                 },
             )
         raise
+    except McpError as exc:
+        import traceback, sys
+
+        print(f"[agent47] McpError: {exc}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+
+        # Reset cached runtime state so the next request gets a fresh MCP process.
+        _invalidate_runner(user_id)
+        invalidate_user_agent(user_id)
+        invalidate_user_toolset(user_id)
+
+        message = str(exc)
+        status = 504 if "Timed out while waiting for response" in message else 503
+        raise HTTPException(
+            status_code=status,
+            detail={
+                "error": "mcp_timeout" if status == 504 else "mcp_error",
+                "message": message,
+            },
+        )
     except (ValueError, RuntimeError) as exc:
         import traceback, sys
         print(f"[agent47] {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)

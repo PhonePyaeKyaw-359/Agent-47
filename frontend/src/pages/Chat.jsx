@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare, Mic, MicOff, Trash2, Mail, Calendar, FilePlus, CreditCard, Wand2, Search, Presentation, ListChecks, FileSpreadsheet } from 'lucide-react';
+import { LogOut, Loader2, Inbox, Send, MessageSquare, Mic, MicOff, Trash2, Mail, Calendar, CreditCard, Wand2, Search, Presentation, ListChecks, FileSpreadsheet } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
-import { chatService, authService, gmailService, WS_BASE_URL } from '../services/api';
+import { chatService, authService, WS_BASE_URL } from '../services/api';
 import { ChatBubble } from '../components/ChatBubble';
 import { Button } from '../components/Button';
-import { Input } from '../components/Input';
 
 /* ─── Sidebar Section wrapper ───────────────────────────────────── */
 function SideSection({ label, children }) {
@@ -19,38 +18,10 @@ function SideSection({ label, children }) {
   );
 }
 
-/* ─── Toolbar card in sidebar ───────────────────────────────────── */
-function ToolCard({ label, queryValue, onQueryChange, onRun, isRunning, isDisabled, icon: Icon, btnLabel }) {
-  return (
-    <div className="bg-bg-card border border-border rounded-xl p-3 space-y-2">
-      <label className="text-[12px] text-ink-primary font-medium">{label}</label>
-      <Input
-        value={queryValue}
-        onChange={onQueryChange}
-        className="h-8 text-[12px] font-mono bg-white"
-        disabled={isDisabled}
-      />
-      <Button
-        onClick={onRun}
-        isLoading={isRunning}
-        disabled={isDisabled}
-        className="w-full h-8 text-[12px] gap-1.5"
-      >
-        <Icon className="h-3.5 w-3.5" />
-        {btnLabel}
-      </Button>
-    </div>
-  );
-}
-
 /* ─── Main Component ─────────────────────────────────────────────── */
 export default function Chat() {
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [triageQuery, setTriageQuery] = useState('in:inbox newer_than:7d');
-  const [summaryQuery, setSummaryQuery] = useState('in:inbox newer_than:14d');
-  const [isTriageLoading, setIsTriageLoading] = useState(false);
-  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState('');
@@ -107,52 +78,6 @@ export default function Chat() {
     el.style.height = Math.min(el.scrollHeight, 180) + 'px';
   }, [inputValue]);
 
-  /* Helpers */
-  const formatTriageResult = (result) => {
-    const triage = result?.triage || {};
-    const totals = result?.totals || {};
-    const renderBucket = (name) => {
-      const items = triage[name] || [];
-      if (!items.length) return `${name}: none`;
-      return [`${name}:`, ...items.slice(0, 6).map((item) => {
-        const score = item?.urgency_score != null ? ` (${item.urgency_score})` : '';
-        const subject = item?.subject || '(no subject)';
-        const from = item?.from ? ` — ${item.from}` : '';
-        return `  • ${subject}${score}${from}`;
-      })].join('\n');
-    };
-    return [
-      '✦ Inbox triage complete.',
-      `Analyzed: ${totals.analyzed ?? 'n/a'} · urgent: ${totals.urgent ?? 0} · actionable: ${totals.actionable ?? 0} · fyi: ${totals.fyi ?? 0} · can-wait: ${totals['can-wait'] ?? 0}`,
-      '', renderBucket('urgent'),
-      '', renderBucket('actionable'),
-      '', renderBucket('fyi'),
-      '', renderBucket('can-wait'),
-      result?.notes ? `\nNotes: ${result.notes}` : '',
-    ].join('\n');
-  };
-
-  const formatSummaryResult = (result) => {
-    const summaries = result?.summaries || [];
-    const overall = result?.overall_actions || [];
-    const sections = summaries.slice(0, 4).map((thread, idx) => {
-      const lines = (arr, limit = 3) => (arr || []).slice(0, limit).map((x) => `    • ${x}`).join('\n') || '    • none';
-      return [
-        `${idx + 1}. ${thread?.subject || '(no subject)'}`,
-        `   Thread: ${thread?.thread_id || 'unknown'}`,
-        `   Key facts:\n${lines(thread?.key_facts)}`,
-        `   Decisions:\n${lines(thread?.decisions)}`,
-        `   Open questions:\n${lines(thread?.open_questions)}`,
-        `   Next steps:\n${lines(thread?.next_steps_for_me)}`,
-        `   Waiting on:\n${lines(thread?.waiting_on_others)}`,
-      ].join('\n');
-    });
-    const overallSection = overall.length
-      ? ['Overall actions:', ...overall.slice(0, 6).map((x) => `  • ${x}`)].join('\n')
-      : 'Overall actions: none';
-    return [`✦ Thread summary complete (${summaries.length} thread(s)).`, '', ...sections, '', overallSection].join('\n');
-  };
-
   const handleSend = async (e) => {
     e?.preventDefault();
     if (!inputValue.trim() || isSending) return;
@@ -174,30 +99,6 @@ export default function Chat() {
     } finally {
       setIsSending(false);
     }
-  };
-
-  const handleInboxTriage = async () => {
-    if (!userId || isTriageLoading || isSummaryLoading || isSending) return;
-    setIsTriageLoading(true);
-    addMessage({ text: `↳ Smart Inbox Triage (${triageQuery})`, isUser: true, id: Date.now() });
-    try {
-      const result = await gmailService.triageInbox(userId, triageQuery, 25, true);
-      addMessage({ text: formatTriageResult(result), isUser: false, id: Date.now() + 1 });
-    } catch (error) {
-      addMessage({ text: `Triage failed: ${error.response?.data?.detail?.message || error.message}`, isUser: false, id: Date.now() + 1, isError: true });
-    } finally { setIsTriageLoading(false); }
-  };
-
-  const handleSummarize = async () => {
-    if (!userId || isSummaryLoading || isTriageLoading || isSending) return;
-    setIsSummaryLoading(true);
-    addMessage({ text: `↳ Email Summarizer + Actions (${summaryQuery})`, isUser: true, id: Date.now() });
-    try {
-      const result = await gmailService.summarizeThreads(userId, summaryQuery, 5);
-      addMessage({ text: formatSummaryResult(result), isUser: false, id: Date.now() + 1 });
-    } catch (error) {
-      addMessage({ text: `Summarization failed: ${error.response?.data?.detail?.message || error.message}`, isUser: false, id: Date.now() + 1, isError: true });
-    } finally { setIsSummaryLoading(false); }
   };
 
   const handleVoiceToggle = async () => {
@@ -359,33 +260,6 @@ export default function Chat() {
             </div>
           </SideSection>
 
-          <details className="group pb-4">
-            <summary className="text-[11px] uppercase tracking-wider text-ink-muted font-medium px-1 mb-1.5 cursor-pointer hover:text-ink-secondary transition-colors list-none flex items-center justify-between">
-              Gmail Tools
-            </summary>
-            <div className="space-y-2 mt-2">
-              <ToolCard
-                label="Triage Query"
-                queryValue={triageQuery}
-                onQueryChange={(e) => setTriageQuery(e.target.value)}
-                onRun={handleInboxTriage}
-                isRunning={isTriageLoading}
-                isDisabled={isSummaryLoading || isSending}
-                icon={Inbox}
-                btnLabel="Smart Triage"
-              />
-              <ToolCard
-                label="Summary Query"
-                queryValue={summaryQuery}
-                onQueryChange={(e) => setSummaryQuery(e.target.value)}
-                onRun={handleSummarize}
-                isRunning={isSummaryLoading}
-                isDisabled={isTriageLoading || isSending}
-                icon={FileText}
-                btnLabel="Summarize"
-              />
-            </div>
-          </details>
         </div>
 
         <div className="p-4 mt-2">

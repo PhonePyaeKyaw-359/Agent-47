@@ -52,6 +52,7 @@ def get_workspace_mcp_toolset(
 
     toolset = MCPToolset(
         connection_params=StdioConnectionParams(
+            timeout=30.0,
             server_params=StdioServerParameters(
                 command="node",
                 args=[str(_WORKSPACE_DIST), "--use-dot-names"],

@@ -44,25 +44,4 @@ export const chatService = {
   }
 };
 
-export const gmailService = {
-  triageInbox: async (userId, query = 'in:inbox newer_than:7d', maxMessages = 25, applyLabels = true) => {
-    const response = await api.post('/gmail/triage', {
-      user_id: userId,
-      query,
-      max_messages: maxMessages,
-      apply_labels: applyLabels,
-    });
-    return response.data;
-  },
-
-  summarizeThreads: async (userId, query = 'in:inbox newer_than:14d', maxThreads = 5) => {
-    const response = await api.post('/gmail/summarize', {
-      user_id: userId,
-      query,
-      max_threads: maxThreads,
-    });
-    return response.data;
-  },
-};
-
 export default api;

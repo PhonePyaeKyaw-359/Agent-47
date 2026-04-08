@@ -30,6 +30,7 @@ export default function Landing() {
             <span className="text-xl font-semibold tracking-tight text-ink-primary">Agent47</span>
           </div>
           <div className="flex items-center gap-8">
+            <Link to="/api-docs" className="text-[14px] font-medium text-ink-secondary hover:text-ink-primary transition-colors hidden md:block">API Docs</Link>
             <a href="#features" className="text-[14px] font-medium text-ink-secondary hover:text-ink-primary transition-colors hidden md:block">Features</a>
             <Link 
               to="/login"
@@ -90,6 +91,13 @@ export default function Landing() {
               Try Agent47 Free
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1.5 transition-transform" />
             </span>
+          </Link>
+          <Link
+            to="/api-docs"
+            className="px-8 py-4 rounded-full text-lg font-medium border border-border bg-white/75 text-ink-primary flex items-center justify-center gap-2 transition-all duration-300 hover:-translate-y-1 active:scale-95"
+          >
+            API Docs
+            <ArrowRight className="w-5 h-5" />
           </Link>
         </div>
       </main>
@@ -189,7 +197,7 @@ export default function Landing() {
             <Bot className="w-5 h-5" /> Agent47
           </div>
           <div className="flex gap-8">
-            <span className="hover:text-ink-primary cursor-pointer transition-colors">Documentation</span>
+            <Link to="/api-docs" className="hover:text-ink-primary cursor-pointer transition-colors">Documentation</Link>
             <Link to="/privacy" className="hover:text-ink-primary cursor-pointer transition-colors">Privacy Policy</Link>
             <Link to="/terms" className="hover:text-ink-primary cursor-pointer transition-colors">Terms of Service</Link>
           </div>

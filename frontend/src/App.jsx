@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Chat from './pages/Chat';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
+import ApiDocs from './pages/ApiDocs';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/chat" element={<Chat />} />
+        <Route path="/api-docs" element={<ApiDocs />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
       </Routes>
