@@ -290,16 +290,16 @@ export default function Chat() {
 
         <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
           {chatHistory.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center px-4 animate-fade-in-up pb-[10vh]">
+            <div className="flex flex-col items-center text-center px-4 animate-fade-in-up pb-[10vh] pt-[5vh] md:pt-[10vh]">
               <div className="relative mb-6">
-                <div className="h-20 w-20 rounded-[18px] overflow-hidden shadow-card border border-border">
+                <div className="h-20 w-20 rounded-[18px] overflow-hidden shadow-card border border-border mt-4">
                   <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
                 </div>
               </div>
-              <h2 className="text-[32px] font-semibold text-ink-primary mb-3 tracking-tight">
+              <h2 className="text-[32px] font-semibold text-ink-primary mb-3 tracking-tight mt-2">
                 How can I help you today?
               </h2>
-              <p className="text-[16px] font-light text-ink-secondary max-w-[420px] leading-relaxed mb-10 tracking-tight">
+              <p className="text-[16px] font-light text-ink-secondary max-w-[420px] leading-relaxed mb-8 tracking-tight">
                 Your AI workspace assistant. Draft emails, organize calendars, and synthesize documents effortlessly.
               </p>
 
