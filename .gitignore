@@ -13,6 +13,7 @@ testing/.env
 testing/.adk/
 **/session.db
 **/artifacts/
+testing/.token_key
 
 # SQLite database (runtime data)
 testing/data.db
