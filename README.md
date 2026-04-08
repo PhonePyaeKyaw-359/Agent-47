@@ -28,9 +28,9 @@
 
 ## 1. Overview
 
-**Agent47** is an intelligent, multi-agent AI system built using the **Google Agent Development Kit (ADK)** and powered by **Gemini 2.5 Flash from Vertex AI**. It acts as a comprehensive personal assistant, capable of orchestrating complex workflows across Google Workspace applications while seamlessly managing local tasks and notes. 
+**Agent47** is an intelligent, multi-agent AI system built using the **Google Agent Development Kit (ADK)** and powered by **Gemini 2.5 Flash from Vertex AI**. It acts as a comprehensive personal assistant, capable of orchestrating complex workflows across Google Workspace applications while seamlessly managing local tasks and notes.
 
-Built for modern productivity, Agent47 doesn't just answer questions—it takes action.
+Agent47’s core innovation lies in its **AI-driven orchestration** layer, which transforms natural language inputs into structured, multi-step workflows. Leveraging a hierarchical multi-agent architecture, the system intelligently interprets user intent, dynamically delegates tasks to specialized agents, and executes actions across integrated platforms such as Google Workspace. This positions Agent47 beyond conventional conversational AI, enabling it to function as an autonomous operational assistant rather than a passive response generator.
 
 ---
 
@@ -79,6 +79,7 @@ The following table outlines the individual agents and their specific responsibi
 
 | Feature | Description |
 | :--- | :--- |
+| **AI Orchestration Engine** | State-of-the-art routing using Gemini 2.5 Flash from Vertex AI to determine which sub-agent is best suited for a task. |
 | **Voice Interface** | Integrated Voice-to-Text via Google Cloud Speech-to-Text for a seamless interactive, hands-free conversational experience. |
 | **Autonomous Delegation** | State-of-the-art routing using Gemini 2.5 Flash from Vertex AI to determine which sub-agent is best suited for a task. |
 | **Google Workspace Integration** | Native connection to Calendar, Gmail, Chat, Docs (Read/Write), Sheets (Read-Only), and Slides (Read-Only). |
