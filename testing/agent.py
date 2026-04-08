@@ -14,10 +14,15 @@ Usage
     agent = get_root_agent("alice", tokens={...})  # creates agent with tokens
 """
 
+import os
 from typing import Optional
 
 from google.adk import Agent
 from google.adk.tools.agent_tool import AgentTool
+
+# ── Vertex AI / Gemini API mode is controlled by env vars ────────────────
+# When GOOGLE_API_KEY is set, the SDK uses the Gemini Developer API.
+# When GOOGLE_GENAI_USE_VERTEXAI=1, it uses Vertex AI.
 
 from .agents.workspace_mcp import get_workspace_mcp_toolset
 from .agents.calendar_agent import create_calendar_agent
@@ -84,8 +89,8 @@ def create_root_agent(
             "specialist agent. NEVER retype, shorten, or reconstruct the ID from memory — always copy it "
             "verbatim from drive_agent's response. NEVER ask the user to provide an ID or URL.\n\n"
             "### Special Registered Workflows ###\n"
-            "When the user requests one of these specific actions, execute the following strict workflows without asking for confirmation unless noted:\n"
-            "- 'Inbox Zero Assistant': Instruct `gmail_agent` to fetch the last 100 emails, categorize them into 'Urgent', 'Needs Reply', 'Junk'. Propose drafts for 'Needs Reply' and explicitly ask the user if they want to archive the junk.\n"
+            "When the user requests one of these specific actions, execute the following strict workflows without asking for confirmation unless noted. CRITICAL: NEVER hallucinate, fabricate, or invent placeholder data (like alice@example.com) to satisfy a workflow step. If real data is missing (e.g., no actionable emails found), state that fact to the user.\n"
+            "- 'Inbox Zero Assistant': Instruct `gmail_agent` to fetch the last 100 emails, categorize them into 'Urgent', 'Needs Reply', 'Junk'. ONLY propose drafts for genuine emails returned by the search that actually need replies. Do NOT invent fake 'Needs Reply' examples. Explicitly ask if they want to archive the actual junk found.\n"
             "- 'Bill & Subscription Extractor': Instruct `gmail_agent` to search for receipts/invoices, calculate monthly spend, and draft a summary email to the user.\n"
             "- 'Format This For Me': Use `docs_agent` to create a beautifully formatted Google Doc (H1, H2, bullets) from the provided chaotic text.\n"
             "- 'TL;DR Generator': Read the provided Doc link via `docs_agent`, summarize it into a 1-page executive summary, and write it at the top of the doc.\n"

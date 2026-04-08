@@ -13,28 +13,28 @@ export function Button({ className, variant = 'primary', size = 'default', isLoa
 
   const variants = {
     primary: [
-      "bg-accent text-[#07080d] font-semibold",
-      "hover:bg-[#9aa3fb] hover:shadow-glow",
+      "bg-accent text-white font-semibold",
+      "hover:opacity-90 hover:shadow-glow-sm",
       "active:scale-[0.98]",
-      "rounded-xl",
+      "rounded-full",
     ].join(' '),
 
     ghost: [
       "bg-transparent text-ink-secondary",
-      "hover:text-ink-primary hover:bg-[#1c1f2e]",
-      "rounded-xl",
+      "hover:text-ink-primary hover:bg-gray-100",
+      "rounded-full",
     ].join(' '),
 
     outline: [
       "bg-transparent text-ink-secondary border border-border",
-      "hover:border-border-accent hover:text-ink-primary",
-      "rounded-xl",
+      "hover:bg-gray-50 hover:text-ink-primary",
+      "rounded-full",
     ].join(' '),
 
     danger: [
-      "bg-transparent text-red-400 border border-red-900/50",
-      "hover:bg-red-950/40 hover:text-red-300",
-      "rounded-xl",
+      "bg-transparent text-red-500 border border-red-200",
+      "hover:bg-red-50 hover:text-red-600",
+      "rounded-full",
     ].join(' '),
   };
 

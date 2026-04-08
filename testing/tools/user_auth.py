@@ -102,15 +102,20 @@ def _decrypt(ciphertext: str) -> str:
 # PostgreSQL setup
 # ---------------------------------------------------------------------------
 
-_DATABASE_URL = os.environ.get("DATABASE_URL", "")
+_DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 
 def _conn() -> psycopg2.extensions.connection:
+    if not _DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not set")
     conn = psycopg2.connect(_DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
     return conn
 
 
 def _init() -> None:
+    if not _DATABASE_URL:
+        # Allow service startup without Postgres so non-auth endpoints still run.
+        return
     c = _conn()
     cur = c.cursor()
     cur.execute(
@@ -171,7 +176,16 @@ def get_user_tokens(user_id: str) -> Optional[dict]:
     c.close()
     if row is None:
         return None
-    return json.loads(_decrypt(row["tokens_enc"]))
+    try:
+        return json.loads(_decrypt(row["tokens_enc"]))
+    except Exception:
+        # If encryption key changed or row is malformed, treat as unauthenticated.
+        # Best-effort cleanup avoids repeated decryption errors on future requests.
+        try:
+            delete_user_tokens(user_id)
+        except Exception:
+            pass
+        return None
 
 
 def delete_user_tokens(user_id: str) -> None:

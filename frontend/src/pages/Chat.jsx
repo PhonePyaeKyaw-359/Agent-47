@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare, Mic, MicOff, Trash2, Mail, Calendar, FilePlus } from 'lucide-react';
+import { LogOut, Loader2, Inbox, FileText, Send, MessageSquare, Mic, MicOff, Trash2, Mail, Calendar, FilePlus, CreditCard, Wand2, Search, Presentation, ListChecks, FileSpreadsheet } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { chatService, authService, gmailService, WS_BASE_URL } from '../services/api';
 import { ChatBubble } from '../components/ChatBubble';
@@ -11,7 +11,7 @@ import { Input } from '../components/Input';
 function SideSection({ label, children }) {
   return (
     <div className="space-y-1.5">
-      <p className="text-[10px] uppercase tracking-widest text-ink-muted font-semibold px-0.5">
+      <p className="text-[11px] uppercase tracking-wider text-ink-muted font-medium px-1">
         {label}
       </p>
       {children}
@@ -23,18 +23,18 @@ function SideSection({ label, children }) {
 function ToolCard({ label, queryValue, onQueryChange, onRun, isRunning, isDisabled, icon: Icon, btnLabel }) {
   return (
     <div className="bg-bg-card border border-border rounded-xl p-3 space-y-2">
-      <label className="text-[11px] text-ink-secondary font-medium">{label}</label>
+      <label className="text-[12px] text-ink-primary font-medium">{label}</label>
       <Input
         value={queryValue}
         onChange={onQueryChange}
-        className="h-8 text-xs font-mono"
+        className="h-8 text-[12px] font-mono bg-white"
         disabled={isDisabled}
       />
       <Button
         onClick={onRun}
         isLoading={isRunning}
         disabled={isDisabled}
-        className="w-full h-8 text-xs gap-1.5"
+        className="w-full h-8 text-[12px] gap-1.5"
       >
         <Icon className="h-3.5 w-3.5" />
         {btnLabel}
@@ -54,8 +54,8 @@ export default function Chat() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState('');
-  const recognitionRef = useRef(null); // holds MediaRecorder instance
-  const wsRef = useRef(null);          // holds WebSocket for streaming STT
+  const recognitionRef = useRef(null);
+  const wsRef = useRef(null);
 
   const navigate = useNavigate();
   const messagesEndRef = useRef(null);
@@ -99,7 +99,7 @@ export default function Chat() {
   /* Auto-focus */
   useEffect(() => { inputRef.current?.focus(); }, [isSending]);
 
-  /* Auto-resize textarea when value changes (e.g. from card click) */
+  /* Auto-resize textarea */
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
@@ -107,7 +107,7 @@ export default function Chat() {
     el.style.height = Math.min(el.scrollHeight, 180) + 'px';
   }, [inputValue]);
 
-  /* ─── Helpers ──────────────────────────────────────────── */
+  /* Helpers */
   const formatTriageResult = (result) => {
     const triage = result?.triage || {};
     const totals = result?.totals || {};
@@ -153,7 +153,6 @@ export default function Chat() {
     return [`✦ Thread summary complete (${summaries.length} thread(s)).`, '', ...sections, '', overallSection].join('\n');
   };
 
-  /* ─── Handlers ─────────────────────────────────────────── */
   const handleSend = async (e) => {
     e?.preventDefault();
     if (!inputValue.trim() || isSending) return;
@@ -201,48 +200,34 @@ export default function Chat() {
     } finally { setIsSummaryLoading(false); }
   };
 
-  /* ─── Voice-to-text (Google Cloud Speech-to-Text, WebSocket) ── */
   const handleVoiceToggle = async () => {
-    // Stop if already recording
     if (isRecording) {
-      recognitionRef.current?.stop(); // onstop → sends DONE over WebSocket
+      recognitionRef.current?.stop();
       return;
     }
-
     if (!navigator.mediaDevices?.getUserMedia) {
       setVoiceError('Microphone access is not supported in this browser.');
       setTimeout(() => setVoiceError(''), 3000);
       return;
     }
-
     setVoiceError('');
-
     let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      setVoiceError('Microphone permission denied.');
-      setTimeout(() => setVoiceError(''), 3000);
-      return;
-    }
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch { setVoiceError('Microphone permission denied.'); setTimeout(() => setVoiceError(''), 3000); return; }
 
     const ws = new WebSocket(`${WS_BASE_URL}/ws/speech`);
     wsRef.current = ws;
-
     let lastTranscript = '';
 
     ws.onmessage = async (event) => {
       let data;
       try { data = JSON.parse(event.data); } catch { return; }
-
       if (data.type === 'error') {
         setIsTranscribing(false);
         setVoiceError(`Speech error: ${data.message}`);
         setTimeout(() => setVoiceError(''), 5000);
-        ws.close();
-        return;
+        ws.close(); return;
       }
-
       if (data.type === 'final') {
         lastTranscript = (data.transcript || '').trim();
         setInputValue(lastTranscript);
@@ -255,7 +240,6 @@ export default function Chat() {
           setTimeout(() => setVoiceError(''), 3000);
           return;
         }
-        // Auto-send
         const userMessage = { text: lastTranscript, isUser: true, id: Date.now() };
         addMessage(userMessage);
         setInputValue('');
@@ -267,148 +251,105 @@ export default function Chat() {
           }
           addMessage({ text: response.response, isUser: false, id: Date.now() + 1 });
         } catch (error) {
-          addMessage({
-            text: `Error: ${error.response?.data?.message || error.message}`,
-            isUser: false, id: Date.now() + 1, isError: true,
-          });
-        } finally {
-          setIsSending(false);
-        }
+          addMessage({ text: `Error: ${error.response?.data?.message || error.message}`, isUser: false, id: Date.now() + 1, isError: true, });
+        } finally { setIsSending(false); }
       }
     };
-
     ws.onerror = () => {
-      setIsRecording(false);
-      setIsTranscribing(false);
-      setVoiceError('WebSocket connection failed. Please try again.');
-      setTimeout(() => setVoiceError(''), 3000);
+      setIsRecording(false); setIsTranscribing(false);
+      setVoiceError('WebSocket connection failed.'); setTimeout(() => setVoiceError(''), 3000);
       stream.getTracks().forEach((t) => t.stop());
     };
-
     ws.onclose = () => setIsRecording(false);
-
     ws.onopen = () => {
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
-        ? 'audio/ogg;codecs=opus'
-        : 'audio/webm';
-
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' : 'audio/webm';
       let recorder;
-      try {
-        recorder = new MediaRecorder(stream, { mimeType });
-      } catch {
-        setVoiceError('Audio recording not supported in this browser.');
-        setTimeout(() => setVoiceError(''), 3000);
-        ws.close();
-        stream.getTracks().forEach((t) => t.stop());
-        return;
-      }
+      try { recorder = new MediaRecorder(stream, { mimeType }); }
+      catch { setVoiceError('Audio recording not supported.'); setTimeout(() => setVoiceError(''), 3000); ws.close(); stream.getTracks().forEach((t) => t.stop()); return; }
       recognitionRef.current = recorder;
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data);
-      };
+      recorder.ondataavailable = (e) => { if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data); };
       recorder.onstart = () => setIsRecording(true);
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
-        setIsRecording(false);
-        setIsTranscribing(true);
+        setIsRecording(false); setIsTranscribing(true);
         if (ws.readyState === WebSocket.OPEN) ws.send('DONE');
       };
       recorder.onerror = () => {
-        setIsRecording(false);
-        setIsTranscribing(false);
-        setVoiceError('Recording error. Please try again.');
-        setTimeout(() => setVoiceError(''), 3000);
-        ws.close();
+        setIsRecording(false); setIsTranscribing(false);
+        setVoiceError('Recording error.'); setTimeout(() => setVoiceError(''), 3000); ws.close();
       };
-
-      // Collect 250ms chunks; auto-stop after 30 s
       recorder.start(250);
-      setTimeout(() => {
-        if (recorder.state === 'recording') recorder.stop();
-      }, 30000);
+      setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 30000);
     };
   };
 
   const handleLogout = () => { logout(); navigate('/'); };
 
-  /* Auth pending */
   if (!isAuthenticated && userId) {
     return (
-      <div className="flex h-screen w-full items-center justify-center gap-3">
+      <div className="flex h-screen w-full items-center justify-center gap-3 bg-bg-base font-sans">
         <Loader2 className="h-5 w-5 animate-spin text-accent" />
-        <span className="text-sm text-ink-secondary">Verifying authentication…</span>
+        <span className="text-sm text-ink-secondary tracking-tight">Verifying authentication…</span>
       </div>
     );
   }
 
-  const busy = isTriageLoading || isSummaryLoading || isSending;
-
   return (
-    <div className="flex h-screen overflow-hidden text-ink-primary">
-
+    <div className="flex h-screen overflow-hidden text-ink-primary bg-bg-base font-sans">
       {/* ── Sidebar ─────────────────────────────────────────── */}
       <aside className="hidden md:flex w-64 flex-col bg-bg-surface border-r border-border shrink-0">
-
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-border/40">
-          <div className="h-8 w-8 rounded-xl overflow-hidden shrink-0 shadow-glow-sm">
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-border">
+          <div className="h-8 w-8 rounded-[8px] overflow-hidden shrink-0 border border-border shadow-sm">
             <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[14px] font-bold text-white tracking-tight leading-none">Agent47</span>
-            <span className="text-[10px] text-ink-muted mt-0.5">Google Workspace AI</span>
+            <span className="text-[15px] font-semibold text-ink-primary tracking-tight leading-none">Agent47</span>
+            <span className="text-[11px] text-ink-muted mt-0.5 tracking-tight">Your best daily companion</span>
           </div>
         </div>
 
-        {/* User Card */}
-        <div className="px-4 mb-3">
-          <div className="bg-bg-card border border-border mt-1 rounded-[14px] px-3 py-2.5 flex items-center gap-3">
+        <div className="px-4 mb-3 mt-4">
+          <div className="bg-bg-base border border-border rounded-[14px] px-3 py-2.5 flex items-center gap-3">
             <div className="h-8 w-8 rounded-full overflow-hidden shrink-0 border border-border">
               <img src="/user.png" alt="User" className="h-full w-full object-cover" />
             </div>
             <div className="flex flex-col min-w-0">
-              <p className="text-[12px] text-white font-medium truncate" title={userId}>{userId}</p>
+              <p className="text-[13px] text-ink-primary font-medium truncate tracking-tight" title={userId}>{userId}</p>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" style={{ boxShadow: '0 0 6px #3b82f6' }} />
-                <span className="text-[10px] text-ink-secondary leading-none mt-px">Connected</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+                <span className="text-[11px] text-green-600 leading-none mt-px tracking-tight">Connected</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* New Chat Button */}
-        <div className="px-4 mb-4 mt-4">
+        <div className="px-4 mb-4 mt-2">
           <button
             onClick={createNewSession}
-            className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-90 active:scale-[0.98]"
-            style={{ background: 'linear-gradient(135deg, #3b82f6, #6366f1)' }}
+            className="w-full py-2.5 rounded-full text-sm font-medium flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] text-white"
+            style={{ backgroundColor: 'var(--color-accent)' }}
           >
             <span className="text-lg leading-none font-light">+</span> New Chat
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto px-4 space-y-6">
-
-          <SideSection label="RECENT CHATS">
+          <SideSection label="Recent Chats">
             <div className="space-y-1">
               {sessions.map(s => (
                 <div
                   key={s.id}
                   onClick={() => setActiveSession(s.id)}
-                  className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors text-[13px] ${s.id === activeSessionId ? 'bg-bg-card border border-border text-white font-medium' : 'text-ink-secondary hover:bg-bg-card hover:text-white border border-transparent'}`}
+                  className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-[12px] cursor-pointer transition-colors text-[14px] tracking-tight ${s.id === activeSessionId ? 'bg-bg-base font-semibold text-ink-primary' : 'text-ink-secondary hover:bg-gray-50 border border-transparent'}`}
                 >
-                  <MessageSquare className={`w-4 h-4 shrink-0 ${s.id === activeSessionId ? 'text-accent' : ''}`} />
+                  <MessageSquare className={`w-4 h-4 shrink-0 ${s.id === activeSessionId ? 'text-ink-primary' : 'text-ink-muted'}`} />
                   <span className="truncate flex-1">{s.title || 'New Chat'}</span>
                   <button
                     onClick={(e) => { e.stopPropagation(); useAuthStore.getState().deleteSession(s.id); }}
-                    className="ml-auto opacity-0 group-hover:opacity-100 text-ink-muted hover:text-red-400 transition-all duration-150 p-0.5 rounded cursor-pointer shrink-0"
+                    className="ml-auto opacity-0 group-hover:opacity-100 text-ink-muted hover:text-red-500 transition-all duration-150 p-0.5 rounded cursor-pointer shrink-0"
                     title="Delete chat"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               ))}
@@ -418,10 +359,9 @@ export default function Chat() {
             </div>
           </SideSection>
 
-          {/* Gmail tools hidden by default under details so it doesnt clutter the UI */}
           <details className="group pb-4">
-            <summary className="text-[10px] uppercase tracking-widest text-ink-muted font-semibold px-0.5 mb-1.5 cursor-pointer hover:text-ink-secondary transition-colors list-none flex items-center justify-between">
-              GMAIL TOOLS
+            <summary className="text-[11px] uppercase tracking-wider text-ink-muted font-medium px-1 mb-1.5 cursor-pointer hover:text-ink-secondary transition-colors list-none flex items-center justify-between">
+              Gmail Tools
             </summary>
             <div className="space-y-2 mt-2">
               <ToolCard
@@ -446,14 +386,12 @@ export default function Chat() {
               />
             </div>
           </details>
-
         </div>
 
-        {/* Sign out */}
         <div className="p-4 mt-2">
           <Button
             variant="ghost"
-            className="w-full justify-start text-[13px] gap-2.5 text-ink-secondary hover:text-white px-2 hover:bg-transparent"
+            className="w-full justify-start text-[14px] gap-2.5 text-ink-secondary hover:text-ink-primary px-2 hover:bg-gray-100"
             onClick={handleLogout}
           >
             <LogOut className="h-4 w-4" />
@@ -463,88 +401,85 @@ export default function Chat() {
       </aside>
 
       {/* ── Main Panel ──────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col h-full min-w-0">
-
-        {/* Mobile header */}
+      <main className="flex-1 flex flex-col h-full min-w-0 bg-bg-base">
         <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-bg-surface">
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg overflow-hidden shrink-0">
+            <div className="h-7 w-7 rounded-[8px] overflow-hidden shrink-0 border border-border">
               <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
             </div>
-            <span className="text-sm font-semibold">Agent47</span>
+            <span className="text-sm font-semibold tracking-tight">Agent47</span>
           </div>
-          <button
-            onClick={handleLogout}
-            className="p-1.5 text-ink-secondary hover:text-ink-primary transition-colors rounded-lg hover:bg-bg-card"
-          >
+          <button onClick={handleLogout} className="p-1.5 text-ink-secondary hover:text-ink-primary rounded-lg hover:bg-gray-100">
             <LogOut className="h-4 w-4" />
           </button>
         </header>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
           {chatHistory.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-4 animate-fade-in-up pb-[10vh]">
               <div className="relative mb-6">
-                <div className="h-20 w-20 rounded-2xl overflow-hidden shadow-glow" style={{ border: '2px solid rgba(59,130,246,0.35)' }}>
+                <div className="h-20 w-20 rounded-[18px] overflow-hidden shadow-card border border-border">
                   <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
                 </div>
-                <span className="absolute -bottom-1.5 -right-1.5 h-5 w-5 rounded-full bg-accent flex items-center justify-center" style={{ boxShadow: '0 0 10px rgba(59,130,246,0.6)' }}>
-                  <span className="h-2 w-2 rounded-full bg-white" />
-                </span>
               </div>
-              <div className="mb-1 text-[11px] uppercase tracking-widest text-accent font-semibold">Agent47</div>
-              <h2 className="text-[28px] font-bold text-white mb-3 tracking-tight">
+              <h2 className="text-[32px] font-semibold text-ink-primary mb-3 tracking-tight">
                 How can I help you today?
               </h2>
-              <p className="text-[14px] text-ink-secondary max-w-[380px] leading-relaxed mb-8">
-                Your Google Workspace AI — emails, calendars, docs, and more.
+              <p className="text-[16px] font-light text-ink-secondary max-w-[420px] leading-relaxed mb-10 tracking-tight">
+                Your AI workspace assistant. Draft emails, organize calendars, and synthesize documents effortlessly.
               </p>
 
-              {/* Quick Action Cards */}
-              <div className="flex flex-row gap-3 justify-center w-full max-w-[620px]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 justify-center w-full max-w-4xl pb-4">
                 {[
                   {
-                    icon: Mail,
-                    label: 'Send an Email',
-                    desc: 'Draft and send a professional email',
-                    color: '#3b82f6',
-                    bg: 'rgba(59,130,246,0.07)',
-                    border: 'rgba(59,130,246,0.22)',
-                    prompt: `I want to send an email. To?: \n What do you want to send?: \n What is your tone?[1. Normal, 2. Formal, 3. Decorated(HTML)]: \n How can I call you?:`,
+                    icon: Mail, label: 'Inbox Zero Assistant', desc: 'Categorize recent emails and draft replies.',
+                    prompt: `Run the Inbox Zero Assistant. Read my recent emails, categorize them, and draft replies to actionable items.`,
                   },
                   {
-                    icon: FilePlus,
-                    label: 'Create a Document',
-                    desc: 'Create a new Google Doc with structure',
-                    color: '#a78bfa',
-                    bg: 'rgba(167,139,250,0.07)',
-                    border: 'rgba(167,139,250,0.22)',
-                    prompt: `Create a Google Doc titled "Q2 Planning Notes"\n\nInclude the following sections:\n1. Goals — What we want to achieve this quarter\n2. Timeline — Key milestones and deadlines\n3. Team Responsibilities — Who owns what`,
+                    icon: CreditCard, label: 'Subscription Extractor', desc: 'Analyze receipts to find monthly spend.',
+                    prompt: `Run the Bill & Subscription Extractor workflow. Search my inbox for repeating subscription receipts and summarize.`,
                   },
                   {
-                    icon: Calendar,
-                    label: 'Schedule an Event',
-                    desc: 'Add a meeting or event to your calendar',
-                    color: '#34d399',
-                    bg: 'rgba(52,211,153,0.07)',
-                    border: 'rgba(52,211,153,0.22)',
-                    prompt: `Schedule a team sync meeting next Monday at 10am for 1 hour. Invite the team and add a Google Meet link.`,
+                    icon: Wand2, label: 'Format This For Me', desc: 'Turn messy text into a clean Google Doc.',
+                    prompt: `Format This For Me: [Paste messy dictation here] -> Create a nicely formatted Google Doc.`,
                   },
-                ].map(({ icon: Icon, label, desc, color, bg, border, prompt }) => (
+                  {
+                    icon: Search, label: 'TL;DR Generator', desc: 'Summarize a long Doc instantly.',
+                    prompt: `Run TL;DR Generator on this link: [Paste Google Doc Link]. Add an executive summary to the top.`,
+                  },
+                  {
+                    icon: FileSpreadsheet, label: 'Data Analyst', desc: 'Ask questions about your budget sheets.',
+                    prompt: `Act as a Natural Language Data Analyst. Read this sheet [Paste Sheet Link] and tell me my largest expenses.`,
+                  },
+                  {
+                    icon: ListChecks, label: 'Anomaly Detection', desc: 'Find past-due tasks in a Google Sheet.',
+                    prompt: `Run Anomaly Detection on this project timeline [Paste Sheet Link] and highlight any row that is past due.`,
+                  },
+                  {
+                    icon: Presentation, label: 'Deck Summarizer', desc: 'Extract takeaways from a massive slide deck.',
+                    prompt: `Run the Deck Summarizer on this presentation [Paste Slide Link]. Give me the 3 main takeaways.`,
+                  },
+                  {
+                    icon: Mic, label: 'Speaker Notes', desc: 'Synthesize a presentation script.',
+                    prompt: `Run Speaker Note Extractor for [Paste Slide Link]. Generate a script for my presentation.`,
+                  },
+                  {
+                    icon: Calendar, label: 'Contextual Meeting', desc: 'Schedule a meet populated with relevant docs.',
+                    prompt: `Contextual Meeting Creation: Schedule a meeting with [Name] about [Topic]. Attach the relevant documents.`,
+                  },
+                  {
+                    icon: Inbox, label: 'Focus Time Blocker', desc: 'Find empty gaps and block out focus time.',
+                    prompt: `Run Focus Time Auto-Blocker. Check my tasks/emails and block out my calendar for deep work.`,
+                  },
+                ].map(({ icon: Icon, label, desc, prompt }) => (
                   <button
                     key={label}
                     onClick={() => { setInputValue(prompt); setTimeout(() => inputRef.current?.focus(), 0); }}
-                    className="quick-action-card flex items-start gap-3 px-4 py-3.5 rounded-2xl text-left transition-all duration-200 cursor-pointer flex-1 min-w-0 overflow-hidden"
-                    style={{ background: bg, border: `1px solid ${border}` }}
+                    className="quick-action-card flex flex-col items-start px-4 py-4 bg-white border border-border rounded-[20px] text-left transition-all duration-200 cursor-pointer w-full min-w-0"
                   >
-                    <div className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5" style={{ background: `${color}22` }}>
-                      <Icon className="h-3.5 w-3.5" style={{ color }} />
-                    </div>
-                    <div className="flex flex-col min-w-0 overflow-hidden">
-                      <span className="text-[12px] font-semibold text-white leading-snug break-words">{label}</span>
-                      <span className="text-[11px] mt-0.5 leading-snug break-words" style={{ color: `${color}cc` }}>{desc}</span>
-                    </div>
+                    <Icon className="h-5 w-5 mb-2.5 text-ink-primary" />
+                    <span className="text-[13px] font-semibold text-ink-primary leading-snug break-words tracking-tight">{label}</span>
+                    <span className="text-[12px] font-light mt-1.5 leading-snug break-words text-ink-secondary tracking-tight">{desc}</span>
                   </button>
                 ))}
               </div>
@@ -552,39 +487,29 @@ export default function Chat() {
           ) : (
             <div className="max-w-3xl mx-auto pb-4">
               {chatHistory.map((msg) => (
-                <ChatBubble
-                  key={msg.id}
-                  message={msg.text}
-                  isUser={msg.isUser}
-                  isError={msg.isError}
-                />
+                <ChatBubble key={msg.id} message={msg.text} isUser={msg.isUser} isError={msg.isError} />
               ))}
-
-              {/* Typing indicator */}
               {isSending && (
                 <div className="flex items-end gap-3 mb-5 animate-fade-in-up">
-                  <div className="h-8 w-8 rounded-xl overflow-hidden shrink-0 shadow-glow-sm mb-0.5">
+                  <div className="h-8 w-8 rounded-[8px] overflow-hidden shrink-0 border border-border mb-0.5">
                     <img src="/bot.png" alt="AI" className="h-full w-full object-cover" />
                   </div>
-                  <div className="bg-bg-card border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5 shadow-card">
-                    <span className="typing-dot" />
-                    <span className="typing-dot" />
-                    <span className="typing-dot" />
+                  <div className="bg-white border border-border rounded-[20px] rounded-bl-sm px-4 py-3 flex items-center gap-1.5 shadow-sm">
+                    <span className="typing-dot bg-ink-muted" />
+                    <span className="typing-dot bg-ink-muted" />
+                    <span className="typing-dot bg-ink-muted" />
                   </div>
                 </div>
               )}
-
               <div ref={messagesEndRef} />
             </div>
           )}
         </div>
 
-        {/* Input bar */}
-        <div className="px-4 md:px-8 pb-6 pt-2 bg-transparent">
+        <div className="px-4 md:px-8 pb-8 pt-2 bg-transparent">
           <div className="max-w-4xl mx-auto">
             <form onSubmit={handleSend} className="relative flex items-center w-full">
-              <div className="flex-1 flex items-start bg-bg-card rounded-2xl border border-border pl-6 pr-2 pt-[16px] pb-[16px] focus-within:border-accent/60 focus-within:shadow-glow-sm shadow-card transition-all duration-200 min-h-[60px]"
-                style={{ backdropFilter: 'blur(8px)' }}>
+              <div className="flex-1 flex items-start bg-white rounded-[24px] border border-border pl-6 pr-2 pt-[14px] pb-[14px] focus-within:border-accent/40 focus-within:shadow-glow-sm shadow-sm transition-all duration-200 min-h-[56px]">
                 <textarea
                   ref={inputRef}
                   value={inputValue}
@@ -594,59 +519,41 @@ export default function Chat() {
                     e.target.style.height = Math.min(e.target.scrollHeight, 180) + 'px';
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend(e);
-                    }
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); }
                   }}
-                  placeholder={isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : 'Ask me anything...'}
+                  placeholder={isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : 'Message Agent47...'}
                   rows={1}
-                  className="flex-1 bg-transparent border-none focus:outline-none text-white text-[15px] placeholder:text-ink-secondary/70 w-full resize-none overflow-y-auto leading-relaxed"
+                  className="flex-1 bg-transparent border-none focus:outline-none text-ink-primary text-[15px] placeholder:text-ink-muted w-full resize-none overflow-y-auto leading-relaxed pt-0.5"
                   style={{ minHeight: '28px', maxHeight: '180px' }}
                   disabled={isSending}
                 />
-                {/* Mic button */}
                 <button
                   type="button"
                   onClick={handleVoiceToggle}
                   disabled={isSending}
                   title={isRecording ? 'Stop recording & send' : 'Start voice input'}
-                  className={[
-                    "h-9 w-9 shrink-0 flex items-center justify-center rounded-xl mr-1",
-                    "transition-all duration-200 bg-transparent cursor-pointer border-none outline-none",
-                    isRecording
-                      ? "text-red-400 mic-recording"
-                      : "text-ink-secondary hover:text-accent hover:bg-white/5",
-                    "disabled:opacity-30 disabled:pointer-events-none",
-                  ].join(' ')}
+                  className={`h-9 w-9 shrink-0 flex items-center justify-center rounded-full mr-1 transition-all duration-200 bg-transparent cursor-pointer border-none outline-none disabled:opacity-30 ${isRecording ? "text-red-500 mic-recording" : "text-ink-secondary hover:text-ink-primary hover:bg-gray-100"}`}
                 >
                   {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
                 </button>
-                {/* Send button */}
                 <button
                   type="submit"
                   disabled={!inputValue.trim() || isSending}
                   title="Send message"
-                  className="h-9 w-9 shrink-0 flex items-center justify-center rounded-xl mr-1 transition-all duration-200 disabled:opacity-30 disabled:pointer-events-none active:scale-90 cursor-pointer"
-                  style={{
-                    background: (!inputValue.trim() || isSending) ? 'transparent' : 'linear-gradient(135deg, #3b82f6, #6366f1)',
-                    border: 'none',
-                    outline: 'none',
-                  }}
+                  className="h-9 w-9 shrink-0 flex items-center justify-center rounded-full transition-all duration-200 disabled:opacity-30 disabled:pointer-events-none active:scale-90 cursor-pointer text-white"
+                  style={{ backgroundColor: (!inputValue.trim() || isSending) ? '#e5e5ea' : 'var(--color-accent)' }}
                 >
                   {isSending ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-accent" />
+                    <Loader2 className="h-4 w-4 animate-spin text-white" />
                   ) : (
-                    <Send className="h-4 w-4" style={{ color: inputValue.trim() ? '#ffffff' : '#60a5fa' }} />
+                    <Send className="h-4 w-4 ml-0.5" />
                   )}
                 </button>
               </div>
             </form>
-            {voiceError && (
-              <p className="text-center mt-2 text-[11px] text-red-400 leading-tight">{voiceError}</p>
-            )}
-            <p className="text-center mt-2.5 text-[10px] text-ink-muted/60 leading-tight">
-              Agent47 may make mistakes. Always verify important information.
+            {voiceError && <p className="text-center mt-2 text-[12px] text-red-500 leading-tight">{voiceError}</p>}
+            <p className="text-center mt-3 text-[12px] text-ink-muted leading-tight font-light">
+              Agent47 can make mistakes. Consider verifying important information.
             </p>
           </div>
         </div>

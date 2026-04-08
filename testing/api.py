@@ -307,6 +307,14 @@ async def _run_user_agent_text(user_id: str, tokens: dict, prompt: str) -> str:
                     "message": "Vertex AI quota exhausted. Please wait a moment and try again.",
                 },
             )
+        if code == 404:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "model_unavailable",
+                    "message": "Configured model is unavailable for this project/region. Please update model configuration.",
+                },
+            )
         raise
 
     return final_response
@@ -737,6 +745,9 @@ async def run(request: RunRequest):
                     if hasattr(part, "text") and part.text:
                         final_response += part.text
     except ClientError as exc:
+        import traceback, sys
+        print(f"[agent47] ClientError: {exc}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
         code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
         if code == 429:
             raise HTTPException(
@@ -746,7 +757,26 @@ async def run(request: RunRequest):
                     "message": "Vertex AI quota exhausted. Please wait a moment and try again.",
                 },
             )
+        if code == 404:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "model_unavailable",
+                    "message": f"Model unavailable: {exc}",
+                },
+            )
         raise
+    except (ValueError, RuntimeError) as exc:
+        import traceback, sys
+        print(f"[agent47] {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "agent_init_error",
+                "message": str(exc),
+            },
+        )
 
     return RunResponse(
         response=final_response,

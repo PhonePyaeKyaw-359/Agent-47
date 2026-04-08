@@ -43,7 +43,7 @@ export default function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!inputValue.trim()) {
-      setError('Please enter a user ID');
+      setError('Please enter a username');
       return;
     }
 
@@ -93,19 +93,9 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-
-      {/* Ambient glow orbs */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-accent/5 blur-[120px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-accent/4 blur-[100px]" />
-      </div>
-
+    <div className="min-h-screen flex items-center justify-center px-4 bg-bg-base font-sans">
       {/* Card */}
       <div className="relative w-full max-w-sm animate-fade-in-up">
-        {/* Top accent line */}
-        <div className="absolute -top-px left-8 right-8 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
-
         <div className="bg-bg-surface border border-border rounded-3xl p-8 shadow-card">
 
           {/* Logo mark */}
@@ -128,7 +118,7 @@ export default function Login() {
                 htmlFor="user-id"
                 className="block text-xs font-medium text-ink-secondary mb-1.5 uppercase tracking-wider"
               >
-                User ID
+                Username
               </label>
               <Input
                 id="user-id"
@@ -162,9 +152,6 @@ export default function Login() {
             Your credentials are handled securely via OAuth 2.0
           </p>
         </div>
-
-        {/* Bottom accent line */}
-        <div className="absolute -bottom-px left-8 right-8 h-px bg-gradient-to-r from-transparent via-border-accent to-transparent" />
       </div>
     </div>
   );
