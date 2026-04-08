@@ -306,12 +306,8 @@ export default function Chat() {
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 justify-center w-full max-w-4xl pb-4">
                 {[
                   {
-                    icon: Mail, label: 'Inbox Zero Assistant', desc: 'Categorize recent emails and draft replies.',
-                    prompt: `Run the Inbox Zero Assistant. Read my recent emails, categorize them, and draft replies to actionable items.`,
-                  },
-                  {
-                    icon: CreditCard, label: 'Subscription Extractor', desc: 'Analyze receipts to find monthly spend.',
-                    prompt: `Run the Bill & Subscription Extractor workflow. Search my inbox for repeating subscription receipts and summarize.`,
+                    icon: Mail, label: 'Send an Email', desc: 'Draft and send a professional email',
+                    prompt: `Send an email to [Recipient Email] about [Topic]. Keep it professional and concise. Also tell me what name I should sign off with.`,
                   },
                   {
                     icon: Wand2, label: 'Format This For Me', desc: 'Turn messy text into a clean Google Doc.',
@@ -326,24 +322,16 @@ export default function Chat() {
                     prompt: `Act as a Natural Language Data Analyst. Read this sheet [Paste Sheet Link] and tell me my largest expenses.`,
                   },
                   {
-                    icon: ListChecks, label: 'Anomaly Detection', desc: 'Find past-due tasks in a Google Sheet.',
-                    prompt: `Run Anomaly Detection on this project timeline [Paste Sheet Link] and highlight any row that is past due.`,
+                    icon: FileSpreadsheet, label: 'Create a Document', desc: 'Create a new Google Doc with structure',
+                    prompt: `Create a new Google Doc titled "EC 2 instance in AWS" with headings: Overview, Usecases, Costs, and How to?. Write a short, clear explanation under each heading, use proper spacing and bullets where helpful, and format it as a polished professional technical document.`,
                   },
                   {
                     icon: Presentation, label: 'Deck Summarizer', desc: 'Extract takeaways from a massive slide deck.',
                     prompt: `Run the Deck Summarizer on this presentation [Paste Slide Link]. Give me the 3 main takeaways.`,
                   },
                   {
-                    icon: Mic, label: 'Speaker Notes', desc: 'Synthesize a presentation script.',
-                    prompt: `Run Speaker Note Extractor for [Paste Slide Link]. Generate a script for my presentation.`,
-                  },
-                  {
-                    icon: Calendar, label: 'Contextual Meeting', desc: 'Schedule a meet populated with relevant docs.',
-                    prompt: `Contextual Meeting Creation: Schedule a meeting with [Name] about [Topic]. Attach the relevant documents.`,
-                  },
-                  {
-                    icon: Inbox, label: 'Focus Time Blocker', desc: 'Find empty gaps and block out focus time.',
-                    prompt: `Run Focus Time Auto-Blocker. Check my tasks/emails and block out my calendar for deep work.`,
+                    icon: Calendar, label: 'Schedule an Event', desc: 'Add a meeting or event to your calendar',
+                    prompt: `Schedule an event titled "Team Sync" for tomorrow at 10:00 AM for 1 hour and add a short agenda in the description.`,
                   },
                 ].map(({ icon: Icon, label, desc, prompt }) => (
                   <button

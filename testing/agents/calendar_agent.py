@@ -39,6 +39,10 @@ def create_calendar_agent(workspace_mcp: MCPToolset) -> Agent:
         "  - Build datetimes using the UTC offset from get_current_time, "
         "e.g. 2026-04-03T10:00:00+07:00.\n"
         "  - Create events immediately without asking for confirmation — the user's request is the confirmation.\n"
+        "  - If the user asks to attach a Google Doc/Drive file to the event, include attachments in "
+        "calendar.createEvent/calendar.updateEvent with fileUrl and title from the resolved Drive file.\n"
+        "  - Never claim an attachment was added unless the returned event data confirms attachments exist.\n"
+        "  - If attachment fails or is unavailable, explicitly tell the user and include the Drive link in the event description instead.\n"
         "  - Return a clear, concise summary to the orchestrator."
     ),
         tools=[get_current_time, workspace_mcp],

@@ -26,6 +26,7 @@ from google.adk.tools.agent_tool import AgentTool
 
 from .agents.workspace_mcp import get_workspace_mcp_toolset
 from .agents.calendar_agent import create_calendar_agent
+from .agents.gmail_agent import create_gmail_agent
 from .agents.chat_agent import create_chat_agent
 from .agents.docs_agent import create_docs_agent
 from .agents.sheets_agent import create_sheets_agent
@@ -50,6 +51,7 @@ def create_root_agent(
     workspace_mcp = get_workspace_mcp_toolset(user_id=user_id, tokens=tokens)
 
     calendar_agent = create_calendar_agent(workspace_mcp)
+    gmail_agent = create_gmail_agent(workspace_mcp)
     chat_agent = create_chat_agent(workspace_mcp)
     docs_agent = create_docs_agent(workspace_mcp)
     sheets_agent = create_sheets_agent(workspace_mcp)
@@ -68,6 +70,7 @@ def create_root_agent(
             "to help users across Google Workspace, tasks, and notes.\n\n"
             "Available sub-agents:\n"
             "  • calendar_agent — all Google Calendar operations.\n"
+            "  • gmail_agent    — Gmail operations: search/read emails, create drafts, send messages.\n"
             "  • chat_agent     — Google Chat operations: list spaces, send messages.\n"
             "  • docs_agent     — Google Docs operations: create docs, read text, write, format.\n"
             "  • sheets_agent   — Google Sheets operations: read metadata, ranges, and sheet text.\n"
@@ -84,7 +87,15 @@ def create_root_agent(
             "or any Drive file by NAME (not by URL or ID), you MUST first call drive_agent to search for "
             "that file and retrieve its ID. Then pass that EXACT ID character-for-character to the relevant "
             "specialist agent. NEVER retype, shorten, or reconstruct the ID from memory — always copy it "
-            "verbatim from drive_agent's response. NEVER ask the user to provide an ID or URL.\n\n"
+            "verbatim from drive_agent's response. NEVER ask the user to provide an ID or URL.\n"
+            "  6. DO NOT HALLUCINATE SUCCESS: Never claim an action was completed unless a tool call returns "
+            "success data that confirms it. If a required capability fails or is unsupported, explicitly say so.\n"
+            "  7. ATTACHMENT CLAIM RULE: Never say a file is attached to an email or calendar event unless the "
+            "create/update tool call included attachments and the returned event/message confirms it.\n\n"
+            "Cross-workflow requirement (email + calendar + doc attachment):\n"
+            "  - If user asks to schedule an event and attach a Google Doc by title, first call drive_agent to "
+            "find the doc, then call calendar_agent with attachments using the Drive URL and title.\n"
+            "  - If attachment cannot be applied, state that clearly and provide the doc link instead.\n\n"
             "- 'Format This For Me': Use `docs_agent` to create a beautifully formatted Google Doc (H1, H2, bullets) from the provided chaotic text.\n"
             "- 'TL;DR Generator': Read the provided Doc link via `docs_agent`, summarize it into a 1-page executive summary, and write it at the top of the doc.\n"
             "- 'Natural Language Data Analyst': Instruct `sheets_agent` to read the provided sheet and perform the requested math/analysis conversationally.\n"
@@ -96,6 +107,7 @@ def create_root_agent(
         ),
         tools=[
             AgentTool(agent=calendar_agent),
+            AgentTool(agent=gmail_agent),
             AgentTool(agent=chat_agent),
             AgentTool(agent=docs_agent),
             AgentTool(agent=sheets_agent),
