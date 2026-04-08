@@ -1,106 +1,215 @@
-# Agent47 — Multi-Agent Personal Assistant
+<div align="center">
+  <img src="frontend/public/bot.png" alt="Agent47 Logo" width="150" height="150" />
+  <h1>Agent47: The Multi-Agent Personal Assistant</h1>
+  <p><b>Your Autonomous Executive Assistant for Google Workspace & Beyond</b></p>
+</div>
 
-A multi-agent AI system built with Google ADK and Gemini that coordinates Google Workspace operations plus local task and note management.
+<br/>
 
-## Architecture
+## Table of Contents
+1. [Overview](#1-overview)
+2. [Hackathon Inspiration](#2-hackathon-inspiration)
+3. [Powered by Google Ecosystem](#3-powered-by-google-ecosystem)
+4. [System Architecture](#4-system-architecture)
+5. [Key Features](#5-key-features)
+6. [Setup & Installation](#6-setup--installation)
+   - 6.1. [Prerequisites](#61-prerequisites)
+   - 6.2. [Clone Workspace MCP Server](#62-clone-workspace-mcp-server)
+   - 6.3. [Configure Google Cloud OAuth](#63-configure-google-cloud-oauth)
+   - 6.4. [Environment Configuration](#64-environment-configuration)
+   - 6.5. [Python Environment Setup](#65-python-environment-setup)
+   - 6.6. [Build & Authenticate MCP Server](#66-build--authenticate-mcp-server)
+   - 6.7. [Frontend Setup](#67-frontend-setup)
+7. [Running the Assistant](#7-running-the-assistant)
+8. [Example Prompts](#8-example-prompts)
+9. [What's Next for Agent47?](#9-whats-next-for-agent47)
 
-```
-orchestrator (root_agent)
-├── calendar_agent   — Google Calendar via workspace MCP server
-├── gmail_agent      — Gmail search, read, labels, draft, send
-├── chat_agent       — Google Chat spaces, threads, DMs
-├── docs_agent       — Google Docs create/read/edit/format
-├── sheets_agent     — Google Sheets read operations
-├── slides_agent     — Google Slides metadata/text/image review
-├── tasks_agent      — Task CRUD via SQLite
-└── notes_agent      — Notes CRUD via SQLite
-```
+---
 
-## Setup
+## 1. Overview
 
-### 1. Prerequisites
+**Agent47** is an intelligent, multi-agent AI system built using the **Google Agent Development Kit (ADK)** and powered by **Gemini 2.5 Flash from Vertex AI**. It acts as a comprehensive personal assistant, capable of orchestrating complex workflows across Google Workspace applications while seamlessly managing local tasks and notes. 
 
-- Python 3.11+
-- Node.js 20+
-- A Google Cloud project with billing enabled
-- `gcloud` CLI authenticated
+Built for modern productivity, Agent47 doesn't just answer questions—it takes action.
 
-### 2. Clone the workspace MCP server
+---
 
+## 2. Hackathon Inspiration
+
+Our main inspiration is to dramatically **increase productivity for both students and office workers** by unifying their daily Google Workspace tools. In today's fast-paced environment, users constantly context-switch between emails, calendars, document editing, and task management. 
+
+By leveraging an orchestrator (root agent) that intelligently delegates tasks to specialized sub-agents, we've created a system that truly understands the nuances of daily office operations. Agent47 transforms disjointed Google tools into a single, cohesive, conversational interface designed to save time and boost output.
+
+---
+
+## 3. Powered by Google Ecosystem
+
+To achieve enterprise-grade reliability, security, and performance, Agent47 is natively integrated across the Google Cloud and Workspace ecosystems:
+
+- **Core Model:** Gemini 2.5 Flash from Vertex AI
+- **Multi-Agent Framework:** Google Agent Development Kit (ADK)
+- **Database Services:** Google Cloud SQL (Persistent Memory)
+- **Voice Intelligence:** Google Cloud Speech-to-Text
+- **Authentication:** Google Cloud OAuth 2.0
+- **Workspace Integrations:** Gmail, Calendar, Docs, Sheets, Slides, and Google Chat.
+- **Data Standard:** Google Workspace MCP (Model Context Protocol)
+
+---
+
+## 4. System Architecture
+
+Agent47 utilizes a hierarchical multi-agent architecture. The `root_agent` acts as the orchestrator, routing natural language intents to specialized domain agents. These domain agents interact directly with the **Google Workspace MCP (Model Context Protocol)** server to execute core actions across the suite. 
+
+The following table outlines the individual agents and their specific responsibilities.
+
+| Agent Name | Description | Access Level |
+| :--- | :--- | :--- |
+| `calendar_agent` | Manages Google Calendar via Workspace MCP server | Read/Write |
+| `gmail_agent` | Handles Gmail: search, read, label, draft, send | Read/Write |
+| `chat_agent` | Interacts with Google Chat spaces, threads, DMs | Read/Write |
+| `docs_agent` | Google Docs: create, read, edit, format | Read/Write |
+| `sheets_agent` | Google Sheets: advanced read operations | Read-Only |
+| `slides_agent` | Google Slides: metadata, text, and image review | Read-Only |
+| `tasks_agent` | Task management via Google Cloud SQL | Read/Write |
+| `notes_agent` | Notes management via Google Cloud SQL | Read/Write |
+
+---
+
+## 5. Key Features
+
+| Feature | Description |
+| :--- | :--- |
+| **Voice Interface** | Integrated Voice-to-Text via Google Cloud Speech-to-Text for a seamless interactive, hands-free conversational experience. |
+| **Autonomous Delegation** | State-of-the-art routing using Gemini 2.5 Flash from Vertex AI to determine which sub-agent is best suited for a task. |
+| **Google Workspace Integration** | Native connection to Calendar, Gmail, Chat, Docs (Read/Write), Sheets (Read-Only), and Slides (Read-Only). |
+| **Persistent Memory** | Google Cloud SQL-backed database for efficiently managing and scaling personal tasks and notes across sessions. |
+| **REST API + Web UI** | Headless architecture allowing both robust API integrations and interactive dev UI testing. |
+
+---
+
+## 6. Setup & Installation
+
+### 6.1. Prerequisites
+- **Python 3.11+**
+- **Node.js 20+**
+- A Google Cloud project with **billing enabled**
+- `gcloud` CLI installed and authenticated
+
+### 6.2. Clone Workspace MCP Server
+Agent47 relies on the Google Workspace MCP (Model Context Protocol) server for deep integrations.
 ```bash
 git clone https://github.com/gemini-cli-extensions/workspace workspace
 ```
 
-### 3. Configure Google Cloud OAuth
-
+### 6.3. Configure Google Cloud OAuth
+Set up the necessary GCP infrastructure for Workspace authentication:
 ```bash
 cd workspace
 gcloud config set project YOUR_PROJECT_ID
 bash scripts/setup-gcp.sh
 cd ..
 ```
+> **Note:** The script will output a `WORKSPACE_CLIENT_ID` and `WORKSPACE_CLOUD_FUNCTION_URL`. Save these for the next step.
 
-The script will output a `WORKSPACE_CLIENT_ID` and `WORKSPACE_CLOUD_FUNCTION_URL`.
-
-### 3. Environment
-
+### 6.4. Environment Configuration
+Create your environment variables file to tie the system together:
 ```bash
 cp .env.example testing/.env
-# Fill in GOOGLE_CLOUD_PROJECT, WORKSPACE_CLIENT_ID, WORKSPACE_CLOUD_FUNCTION_URL
 ```
+Ensure you fill in `GOOGLE_CLOUD_PROJECT`, `WORKSPACE_CLIENT_ID`, and `WORKSPACE_CLOUD_FUNCTION_URL` inside `testing/.env`.
 
-### 4. Python environment
-
+### 6.5. Python Environment Setup
+Initialize the core backend:
 ```bash
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 5. Build the workspace MCP server
-
+### 6.6. Build & Authenticate MCP Server
+Build the workspace connector and perform your initial machine authentication:
 ```bash
 cd workspace
 npm install
 npm run build
+cd workspace-server
+node dist/headless-login.js
+# Your browser will open — sign in with your Google Workspace account!
+cd ../../
+```
+
+### 6.7. Frontend Setup
+Install the dependencies for the custom React/Vite frontend:
+```bash
+cd frontend
+npm install
 cd ..
 ```
 
-### 6. Authenticate with Google (once per machine)
+---
 
+## 7. Running the Assistant
+
+You can interact with Agent47 through the custom Frontend, the Dev UI, or via the REST API. We **highly recommend** using the custom Frontend for the best experience and voice-to-text capabilities.
+
+**Launch Custom Frontend (Recommended):**
 ```bash
-cd workspace/workspace-server
-node dist/headless-login.js
-# Browser opens — sign in with your Google account
-cd ../..
+cd frontend
+npm run dev
 ```
 
-### 7. Run
-
-**Dev UI:**
+**Launch Dev UI:**
 ```bash
 adk web
 ```
 
-**REST API:**
+**Launch REST API:**
 ```bash
 uvicorn testing.api:app --host 0.0.0.0 --port 8000
 ```
 
-API endpoints:
-- `GET  /health`
-- `POST /run` — `{"message": "What's on my calendar today?", "session_id": ""}`
-- `DELETE /sessions/{session_id}`
+**Full API Endpoints Table:**
 
-## Example prompts
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/auth/login` | Return an OAuth consent URL for a specific user ID |
+| `GET` | `/auth/callback` | OAuth redirect callback handler to receive tokens |
+| `GET` | `/auth/status/{user_id}` | Check token validation status for a specific user |
+| `GET` | `/auth/users` | List all authenticated users |
+| `DELETE` | `/auth/logout/{user_id}` | Invalidate tokens and clear workspace runners |
+| `GET` | `/health` | System status ping check |
+| `WS` | `/ws/speech` | Real-time WebSocket audio streaming using Cloud Speech-to-Text |
+| `POST` | `/run` | Execute commands. Payload: `{"message": "...", "user_id": "...", "session_id": "..."}` |
+| `DELETE` | `/sessions/{session_id}` | Clear a specific chat session for a user |
 
-- *"What meetings do I have today?"*
-- *"Find unread emails from this week about Q2 planning"*
-- *"Send a Chat message to the eng standup space: build is green"*
-- *"Create a Google Doc called Weekly Summary with today's highlights"*
-- *"Read range A1:D20 from spreadsheet <sheet_id>"*
-- *"Summarize slide text from presentation <presentation_id>"*
-- *"Create a task: Review PR by Friday, high priority"*
-- *"Schedule a standup tomorrow at 10am with alice@example.com"*
-- *"Save a note: team offsite ideas — tags: work,planning"*
-- *"Show all pending tasks"*
+---
+
+## 8. Example Prompts
+
+Agent47 excels at complex natural language commands. Try asking actions like:
+
+| Category | Example Prompt |
+| :--- | :--- |
+| **Scheduling** | "Schedule a standup tomorrow at 10am with alice@example.com" |
+| **Email Triage** | "Find unread emails from this week about Q2 planning" |
+| **Document Generation** | "Create a Google Doc called Weekly Summary with today's highlights" |
+| **Communications** | "Send a Chat message to the eng standup space: build is green" |
+| **Task Management** | "Create a task: Review PR by Friday, high priority" and "Show all pending tasks" |
+| **Knowledge Retrieval**| "Summarize slide text from presentation <presentation_id>" |
+| **Note Taking** | "Save a note: team offsite ideas — tags: work,planning" |
+
+---
+
+## 9. What's Next for Agent47?
+
+We are aggressively driving the platform toward a fully production-ready release with the following strategic priorities:
+
+- **Performance Optimization:** We are continuously tuning our agent orchestration flow to significantly improve response latency and streamline high-volume data processing speeds.
+- **Enterprise Verification:** We are actively navigating the official Google OAuth Console verification process to ensure secure, scalable, and compliant third-party access control.
+- **Enhanced Prompt Engineering:** We are optimizing internal system prompts to drastically empower our agents, ensuring precise domain context mapping and elevating the overall productivity yields for our users.
+
+<br/>
+
+<div align="center">
+  <i>Built with Google ADK and Gemini 2.5 Flash from Vertex AI.</i>
+</div>
