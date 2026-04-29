@@ -6,12 +6,12 @@
 **/*.pyd
 
 # Runtime data (SQLite DB + Fernet key — never bake into image)
-testing/data.db
-testing/.token_key
+backend/data.db
+backend/.token_key
 
 # Secrets
 .env
-testing/.env
+backend/.env
 
 # Source control
 .git/
@@ -26,7 +26,7 @@ workspace/logs/
 # Misc
 *.md
 docs/
-testing/skills/
+backend/skills/
 workspace/skills/
 workspace/commands/
 workspace/scripts/

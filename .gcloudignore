@@ -9,12 +9,12 @@
 **/*.pyd
 
 # Runtime data — never bake into image
-testing/data.db
-testing/.token_key
+backend/data.db
+backend/.token_key
 
 # Secrets
 .env
-testing/.env
+backend/.env
 
 # Source control
 .git/

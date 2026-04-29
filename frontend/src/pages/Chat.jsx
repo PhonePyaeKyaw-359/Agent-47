@@ -38,7 +38,7 @@ export default function Chat() {
   const sessions = useAuthStore((s) => s.sessions) || [];
   const activeSessionId = useAuthStore((s) => s.activeSessionId);
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
-  const chatHistory = activeSession ? activeSession.messages : [];
+  const chatHistory = React.useMemo(() => (activeSession ? activeSession.messages : []), [activeSession]);
   const sessionId = activeSessionId;
 
   const addMessage = useAuthStore((s) => s.addMessage);
@@ -90,7 +90,7 @@ export default function Chat() {
       if (response.session_id && response.session_id !== sessionId) {
         updateSessionId(sessionId, response.session_id);
       }
-      addMessage({ text: response.response, isUser: false, id: Date.now() + 1 });
+      addMessage({ text: response.response, isUser: false, id: Date.now() + 1, steps: response.steps });
     } catch (error) {
       addMessage({
         text: `Error: ${error.response?.data?.message || error.message}`,
@@ -150,7 +150,7 @@ export default function Chat() {
           if (response.session_id && response.session_id !== sessionId) {
             updateSessionId(sessionId, response.session_id);
           }
-          addMessage({ text: response.response, isUser: false, id: Date.now() + 1 });
+          addMessage({ text: response.response, isUser: false, id: Date.now() + 1, steps: response.steps });
         } catch (error) {
           addMessage({ text: `Error: ${error.response?.data?.message || error.message}`, isUser: false, id: Date.now() + 1, isError: true, });
         } finally { setIsSending(false); }
@@ -349,7 +349,7 @@ export default function Chat() {
           ) : (
             <div className="max-w-3xl mx-auto pb-4">
               {chatHistory.map((msg) => (
-                <ChatBubble key={msg.id} message={msg.text} isUser={msg.isUser} isError={msg.isError} />
+                <ChatBubble key={msg.id} message={msg.text} isUser={msg.isUser} isError={msg.isError} steps={msg.steps} />
               ))}
               {isSending && (
                 <div className="flex items-end gap-3 mb-5 animate-fade-in-up">

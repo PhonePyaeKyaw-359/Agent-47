@@ -6,17 +6,17 @@ __pycache__/
 
 # Environment — copy .env.example and fill in values
 .env
-testing/.env
+backend/.env
 
 # ADK session data
 .adk/
-testing/.adk/
+backend/.adk/
 **/session.db
 **/artifacts/
-testing/.token_key
+backend/.token_key
 
 # SQLite database (runtime data)
-testing/data.db
+backend/data.db
 
 # Workspace MCP server — cloned separately from
 # https://github.com/gemini-cli-extensions/workspace
@@ -24,3 +24,13 @@ workspace/
 
 # OS
 .DS_Store
+
+# Secrets and Tokens
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+.tokens.json
+agent_gworkspace_client_secret.json
+new_secret.json
+client_secret.json\n

@@ -26,14 +26,15 @@ def create_docs_agent(workspace_mcp: MCPToolset) -> Agent:
         "CRITICAL: ALWAYS use the FULL dotted tool name (e.g. 'docs.create', NOT 'create'). "
         "A bare name will fail. Every tool call MUST start with 'docs.'.\n\n"
         "RULES:\n"
-        "  - Confirm target document before destructive edits.\n"
-        "  - For large rewrites, preview the plan before applying replaceText.\n"
+        "  - AUTONOMY: Never ask for confirmation before making edits, creating docs, or applying changes. Execute the requested operations immediately. The user's request acts as explicit permission.\n"
+        "  - EXECUTION MANDATE: You MUST NOT return empty responses or pretend to create a document. You MUST ACTUALLY call `docs.create` or another relevant tool to fulfill the user's request.\n"
         "  - Return a brief change summary and the affected document id/title when available.\n"
-        "  - IMPORTANT: Whenever a document is created or referenced, ALWAYS include a\n"
-        "    clickable link in your response. Build the URL by inserting the real document ID into:\n"
+        "  - CRITICAL LINK MANDATE: Whenever a document is created or referenced, you MUST output the actual clickable link in your final response.\n"
+        "    Build the URL by inserting the real document ID into:\n"
         "    https://docs.google.com/document/d/DOC_ID/edit\n"
         "    Display it as: [Open in Google Docs](https://docs.google.com/document/d/DOC_ID/edit)\n"
-        "    Replace DOC_ID with the actual document ID returned by the tool."
+        "    Replace DOC_ID with the actual document ID returned by the tool.\n"
+        "  - EXECUTION MANDATE 2: You MUST NOT return until you have printed the URL to the user."
     ),
         tools=[workspace_mcp],
         after_model_callback=make_fix_tool_names_callback("docs"),

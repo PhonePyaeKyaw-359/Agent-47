@@ -2,10 +2,10 @@
 FastAPI deployment for the Agent47 multi-agent system (multi-user).
 
 Run with:
-    uvicorn testing.api:app --host 0.0.0.0 --port 8000
+    uvicorn backend.api:app --host 0.0.0.0 --port 8000
 
 Or via ADK's built-in server:
-    adk api_server testing
+    adk api_server backend
 """
 
 import asyncio
@@ -100,6 +100,7 @@ class RunResponse(BaseModel):
     response: str
     session_id: str
     user_id: str
+    steps: list[str] = []
 
 
 def _extract_first_json(text: str) -> dict:
@@ -316,42 +317,24 @@ async def auth_login(
     # Build callback URL — force https when behind Cloud Run's load balancer
     # (Cloud Run terminates TLS and forwards via HTTP internally, so
     # request.base_url would return http:// without this correction)
-    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
-    base = str(request.base_url).rstrip("/")
-    if base.startswith("http://") and proto == "https":
-        base = "https://" + base[len("http://"):]
-    callback_url = base + "/auth/callback"
+    callback_url = "http://localhost:8000/auth/callback"
     url = generate_login_url(user_id=user_id, callback_url=callback_url)
     return {"user_id": user_id, "auth_url": url}
 
 
 @app.get("/auth/callback", response_class=HTMLResponse)
 async def auth_callback(
-    access_token: str = Query(""),
-    refresh_token: str = Query(""),
-    scope: str = Query(""),
-    token_type: str = Query("Bearer"),
-    expiry_date: str = Query("0"),
+    code: str = Query(""),
     state: str = Query(""),
+    error: str = Query(""),
 ):
-    """OAuth callback — receives tokens from the Cloud Function redirect.
-
-    The Cloud Function decodes the ``state`` (which contains our callback
-    URI), exchanges the auth code for tokens, and redirects here with the
-    tokens as query parameters.
-    """
-    if not access_token:
-        raise HTTPException(status_code=400, detail="Missing access_token")
+    if error:
+        raise HTTPException(status_code=400, detail=f"Auth error: {error}")
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code")
 
     try:
-        user_id = process_oauth_callback(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            scope=scope,
-            token_type=token_type,
-            expiry_date=expiry_date,
-            state_csrf=state,
-        )
+        user_id = process_oauth_callback(code=code, state_csrf=state)
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
 
@@ -543,6 +526,7 @@ async def run(request: RunRequest):
     message_text = request.message
     content = Content(role="user", parts=[Part(text=message_text)])
     final_response = ""
+    steps = []
 
     try:
         async for event in runner.run_async(
@@ -550,6 +534,10 @@ async def run(request: RunRequest):
             session_id=session_id,
             new_message=content,
         ):
+            if hasattr(event, "get_function_calls") and event.get_function_calls():
+                for fc in event.get_function_calls():
+                    steps.append(f"{event.author} → {fc.name}()")
+            
             if event.is_final_response() and event.content:
                 for part in event.content.parts:
                     if hasattr(part, "text") and part.text:
@@ -612,6 +600,7 @@ async def run(request: RunRequest):
         response=final_response,
         session_id=session_id,
         user_id=user_id,
+        steps=steps,
     )
 
 

@@ -34,7 +34,7 @@ const mdComponents = {
   hr: () => <hr className="border-border my-4" />,
 };
 
-export function ChatBubble({ message, isUser, isError }) {
+export function ChatBubble({ message, isUser, isError, steps }) {
   return (
     <div className={cn(
       "flex w-full mb-6 animate-fade-in-up items-end",
@@ -60,9 +60,22 @@ export function ChatBubble({ message, isUser, isError }) {
         {isUser ? (
           <span className="whitespace-pre-wrap leading-relaxed">{message}</span>
         ) : (
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-            {message}
-          </ReactMarkdown>
+          <>
+            {steps && steps.length > 0 && (
+              <div className="mb-3 space-y-1 bg-gray-50 border border-gray-100 rounded-[12px] p-3 text-[12px]">
+                <div className="font-semibold text-ink-secondary mb-1">Agent Routing & Actions:</div>
+                {steps.map((step, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-ink-muted">
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent/60 shrink-0" />
+                    <span className="font-mono">{step}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+              {message}
+            </ReactMarkdown>
+          </>
         )}
       </div>
     </div>

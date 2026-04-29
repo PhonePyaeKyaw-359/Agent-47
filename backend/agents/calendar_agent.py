@@ -10,7 +10,7 @@ from ..tools.fix_tool_names import make_fix_tool_names_callback
 def create_calendar_agent(workspace_mcp: MCPToolset) -> Agent:
     """Create a Calendar agent wired to a per-user MCPToolset."""
     return Agent(
-    model="gemini-2.5-flash",
+    model="gemini-2.5-pro",
     name="calendar_agent",
     description=(
         "Google Calendar specialist. Handles listing, creating, updating, "
@@ -35,6 +35,11 @@ def create_calendar_agent(workspace_mcp: MCPToolset) -> Agent:
         "CRITICAL: ALWAYS use the FULL dotted tool name (e.g. 'calendar.listEvents', "
         "NOT 'listEvents'). A bare name will fail. Every calendar tool call MUST start with 'calendar.'.\n\n"
         "RULES:\n"
+        "  - AUTONOMY: Never ask for confirmation before making edits or creating events. Execute the requested operations immediately. The user's request acts as explicit permission.\n"
+        "  - EXACT SCHEMA: For calendar.createEvent, 'start' and 'end' MUST be objects like: `{'dateTime': '2026-04-30T10:00:00+07:00'}`. NEVER pass simple strings to 'start' or 'end'.\n"
+        "  - EXACT SCHEMA: For 'attendees', you must pass a single comma-separated string, e.g., `'email1@example.com, email2@example.com'`. Do NOT pass an array.\n"
+        "  - EXECUTION MANDATE 2: You MUST call `get_current_time` as the very first step in your chain. Do NOT stop without calling it.\n"
+        "  - EXECUTION MANDATE: You MUST NOT return empty responses or pretend to create an event. You MUST ACTUALLY call `calendar.createEvent` or another relevant tool to fulfill the user's request.\n"
         "  - Always pass calendarId='primary' unless the user specifies otherwise.\n"
         "  - Build datetimes using the UTC offset from get_current_time, "
         "e.g. 2026-04-03T10:00:00+07:00.\n"
@@ -43,6 +48,7 @@ def create_calendar_agent(workspace_mcp: MCPToolset) -> Agent:
         "calendar.createEvent/calendar.updateEvent with fileUrl and title from the resolved Drive file.\n"
         "  - Never claim an attachment was added unless the returned event data confirms attachments exist.\n"
         "  - If attachment fails or is unavailable, explicitly tell the user and include the Drive link in the event description instead.\n"
+        "  - EXECUTION MANDATE: You MUST NOT return empty responses or pretend to create an event. You MUST ACTUALLY call `calendar.createEvent`!\n"
         "  - Return a clear, concise summary to the orchestrator."
     ),
         tools=[get_current_time, workspace_mcp],

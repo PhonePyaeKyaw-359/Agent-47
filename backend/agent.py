@@ -8,7 +8,7 @@ Each user_id gets:
 
 Usage
 -----
-    from testing.agent import get_root_agent
+    from backend.agent import get_root_agent
 
     agent = get_root_agent("alice")        # returns cached agent for alice
     agent = get_root_agent("alice", tokens={...})  # creates agent with tokens
@@ -80,7 +80,7 @@ def create_root_agent(
             "  • notes_agent    — local notes database operations.\n\n"
             "Routing rules:\n"
             "  1. Analyse the request and determine which sub-agent(s) to call.\n"
-            "  2. Call each sub-agent with a clear, specific instruction.\n"
+            "  2. Call each sub-agent with a clear, specific, and COMPLETE instruction. Sub-agents do NOT have access to our conversation history. You MUST pass all collected context (emails, file IDs, dates, names, previous replies) in the 'request' field EVERY TIME you call them.\n"
             "  3. Combine the results and present them clearly to the user.\n"
             "  4. For cross-agent workflows, call agents sequentially and chain outputs.\n"
             "  5. FILE NAME RESOLUTION (CRITICAL): If the user refers to a Google Doc, Sheet, Slide deck, "
@@ -91,7 +91,9 @@ def create_root_agent(
             "  6. DO NOT HALLUCINATE SUCCESS: Never claim an action was completed unless a tool call returns "
             "success data that confirms it. If a required capability fails or is unsupported, explicitly say so.\n"
             "  7. ATTACHMENT CLAIM RULE: Never say a file is attached to an email or calendar event unless the "
-            "create/update tool call included attachments and the returned event/message confirms it.\n\n"
+            "create/update tool call included attachments and the returned event/message confirms it.\n"
+            "  8. AUTONOMY RULE: NEVER ask the user for confirmation before executing a write operation (like creating an event, sending an email, or updating a doc). The user implicitly gives permission by their request. Execute actions immediately and report the result.\n"
+            "  9. RETURN ASSET LINKS: When an agent creates a Google Doc, Sheet, or Slide, or sends an email, YOU MUST provide the user with the actual URL/link to that asset returned by the sub-agent. DO NOT hide the link.\n\n"
             "Cross-workflow requirement (email + calendar + doc attachment):\n"
             "  - If user asks to schedule an event and attach a Google Doc by title, first call drive_agent to "
             "find the doc, then call calendar_agent with attachments using the Drive URL and title.\n"

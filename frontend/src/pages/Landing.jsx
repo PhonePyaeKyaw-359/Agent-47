@@ -11,7 +11,7 @@ export default function Landing() {
       setWordIndex((current) => (current + 1) % words.length);
     }, 2500);
     return () => clearInterval(interval);
-  }, []);
+  }, [words.length]);
 
   return (
     <div className="min-h-screen relative flex flex-col bg-[#fbfbfd] text-ink-primary font-sans overflow-hidden">

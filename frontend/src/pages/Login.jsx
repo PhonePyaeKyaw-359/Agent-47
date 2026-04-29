@@ -79,7 +79,7 @@ export default function Login() {
               setAuthenticated(true);
               navigate('/chat');
             }
-          } catch (_) {}
+          } catch { /* ignore */ }
         }, 2000);
       } else {
         setError('Failed to get authentication URL. Please try again.');

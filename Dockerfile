@@ -57,10 +57,10 @@ COPY --from=mcp-builder /build/node_modules/ workspace/node_modules/
 COPY --from=mcp-builder /build/workspace-server/dist/ workspace/workspace-server/dist/
 
 # ── Application source ───────────────────────────────────────────────────────
-COPY testing/ testing/
+COPY backend/ backend/
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
 # Cloud Run injects PORT (default 8080). Never hard-code 8080.
 ENV PORT=8080
 
-CMD exec uvicorn testing.api:app --host 0.0.0.0 --port "${PORT}" --proxy-headers --forwarded-allow-ips='*'
+CMD exec uvicorn backend.api:app --host 0.0.0.0 --port "${PORT}" --proxy-headers --forwarded-allow-ips='*'

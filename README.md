@@ -84,7 +84,7 @@ The following table outlines the individual agents and their specific responsibi
 | **Autonomous Delegation** | State-of-the-art routing using Gemini 2.5 Flash from Vertex AI to determine which sub-agent is best suited for a task. |
 | **Google Workspace Integration** | Native connection to Calendar, Gmail, Chat, Docs (Read/Write), Sheets (Read-Only), and Slides (Read-Only). |
 | **Persistent Memory** | Google Cloud SQL-backed database for efficiently managing and scaling personal tasks and notes across sessions. |
-| **REST API + Web UI** | Headless architecture allowing both robust API integrations and interactive dev UI testing. |
+| **REST API + Web UI** | Headless architecture allowing both robust API integrations and interactive dev UI backend. |
 
 ---
 
@@ -115,9 +115,9 @@ cd ..
 ### 6.4. Environment Configuration
 Create your environment variables file to tie the system together:
 ```bash
-cp .env.example testing/.env
+cp .env.example backend/.env
 ```
-Ensure you fill in `GOOGLE_CLOUD_PROJECT`, `WORKSPACE_CLIENT_ID`, and `WORKSPACE_CLOUD_FUNCTION_URL` inside `testing/.env`.
+Ensure you fill in `GOOGLE_CLOUD_PROJECT`, `WORKSPACE_CLIENT_ID`, and `WORKSPACE_CLOUD_FUNCTION_URL` inside `backend/.env`.
 
 ### 6.5. Python Environment Setup
 Initialize the core backend:
@@ -140,12 +140,14 @@ cd ../../
 ```
 
 ### 6.7. Frontend Setup
-Install the dependencies for the custom React/Vite frontend:
+Install the dependencies for the custom React/Vite frontend and configure its environment:
 ```bash
 cd frontend
 npm install
+cp .env.example .env
 cd ..
 ```
+> **Note:** The `VITE_API_URL` in `.env` defaults to `http://localhost:8000` to seamlessly connect with your local backend.
 
 ---
 
@@ -153,20 +155,29 @@ cd ..
 
 You can interact with Agent47 through the custom Frontend, the Dev UI, or via the REST API. We **highly recommend** using the custom Frontend for the best experience and voice-to-text capabilities.
 
-**Launch Custom Frontend (Recommended):**
+### **The Easy Way (One-Command Start):**
+Simply execute the provided convenience script from the project root to run both the frontend and backend simultaneously:
+```bash
+./start.sh
+```
+
+### **The Manual Way:**
+**Launch Custom Frontend:**
 ```bash
 cd frontend
 npm run dev
 ```
 
-**Launch Dev UI:**
-```bash
-adk web
-```
-
 **Launch REST API:**
 ```bash
-uvicorn testing.api:app --host 0.0.0.0 --port 8000
+source .venv/bin/activate
+uvicorn backend.api:app --host 0.0.0.0 --port 8000
+```
+
+**Launch ADK Dev UI:**
+```bash
+source .venv/bin/activate
+adk web
 ```
 
 **Full API Endpoints Table:**

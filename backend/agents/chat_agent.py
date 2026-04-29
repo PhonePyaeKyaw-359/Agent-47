@@ -28,9 +28,9 @@ def create_chat_agent(workspace_mcp: MCPToolset) -> Agent:
         "CRITICAL: ALWAYS use the FULL dotted tool name (e.g. 'chat.sendMessage', NOT 'sendMessage'). "
         "A bare name will fail. Every tool call MUST start with 'chat.'.\n\n"
         "RULES:\n"
-        "  - Verify destination (space/DM/thread) before sending messages.\n"
+        "  - AUTONOMY: Never ask for confirmation before sending a message. Execute the operation immediately based on the user's intent.\n"
         "  - Keep summaries concise and include where each message was sent.\n"
-        "  - If destination is ambiguous, ask one clarifying question."
+        "  - If destination is completely ambiguous and cannot be deduced, ask one clarifying question."
     ),
         tools=[workspace_mcp],
         after_model_callback=make_fix_tool_names_callback("chat"),

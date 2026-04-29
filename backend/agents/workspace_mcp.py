@@ -42,17 +42,15 @@ def get_workspace_mcp_toolset(
     if user_id in _user_toolsets:
         return _user_toolsets[user_id]
 
-    env = {**os.environ, "WORKSPACE_USER_ID": user_id}
+    env = {**os.environ, "WORKSPACE_USER_ID": user_id, "WORKSPACE_ENABLE_LOGGING": "true"}
 
     if tokens:
         env["WORKSPACE_ACCESS_TOKEN"] = tokens.get("access_token", "")
-        env["WORKSPACE_REFRESH_TOKEN"] = tokens.get("refresh_token", "")
-        env["WORKSPACE_TOKEN_EXPIRY"] = str(tokens.get("expiry_date", 0))
         env["WORKSPACE_TOKEN_SCOPE"] = tokens.get("scope", "")
 
     toolset = MCPToolset(
         connection_params=StdioConnectionParams(
-            timeout=30.0,
+            timeout=300.0,
             server_params=StdioServerParameters(
                 command="node",
                 args=[str(_WORKSPACE_DIST), "--use-dot-names"],
