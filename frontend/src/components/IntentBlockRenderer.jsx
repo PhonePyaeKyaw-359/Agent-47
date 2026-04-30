@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Edit2, Sparkles, ArrowRight, History, Mail, FileText, Search, BarChart3, FilePlus, Send, RefreshCw } from 'lucide-react';
+import { Check, Edit2, ArrowRight, History, Mail, FileText, Search, BarChart3, FilePlus, Send, RefreshCw, Calendar } from 'lucide-react';
 import { chatService } from '../services/api';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -25,6 +25,7 @@ const intentIcons = {
   execute_summary: Search,
   data_analysis: BarChart3,
   generate_docs: FilePlus,
+  schedule_event: Calendar,
 };
 
 const intentLabels = {
@@ -33,6 +34,7 @@ const intentLabels = {
   execute_summary: "Generate Summary",
   data_analysis: "Analyze Data",
   generate_docs: "Create Document",
+  schedule_event: "Schedule Event",
 };
 
 /* ── Conversational questions per intent+field ─────────────────── */
@@ -68,6 +70,15 @@ const fieldQuestions = {
     content_depth: "How detailed? (e.g. brief overview, in-depth, exhaustive…)",
     tone:          "What tone? (e.g. academic, casual, professional…)",
   },
+  schedule_event: {
+    title:           "What should the event be called?",
+    date:            "What date is it? (e.g. tomorrow, May 3, 2026)",
+    start_time:      "What time does it start?",
+    duration:        "How long is it?",
+    attendees:       "Who should be invited? Add emails or leave blank.",
+    description:     "What should the event description say?",
+    add_google_meet: "Add a Google Meet link?",
+  },
 };
 
 /* Fallback question for unknown intent/field combos */
@@ -83,12 +94,14 @@ const fieldShortLabels = {
   text_or_doc_link: 'Source', action: 'Action', style: 'Style',
   source_doc_link: 'Source Doc', length: 'Length', focus: 'Focus',
   sheet_link: 'Sheet', nl_queries: 'Questions', title: 'Title',
-  outline: 'Outline', content_depth: 'Depth',
+  outline: 'Outline', content_depth: 'Depth', date: 'Date',
+  start_time: 'Start', duration: 'Duration', attendees: 'Guests',
+  description: 'Description', add_google_meet: 'Meet',
 };
 
 /* Fields that can be left blank */
 const optionalFields = new Set([
-  'attachment', 'cc', 'focus', 'sender',
+  'attachment', 'cc', 'focus', 'sender', 'attendees', 'description',
 ]);
 
 /* Fields with selectable chip options instead of free-text */
@@ -99,6 +112,7 @@ const fieldChoices = {
   content_type: ['Follow-up', 'Cold outreach', 'Update', 'Invitation', 'Thank you', 'Proposal', 'Report', 'Guide'],
   content_depth: ['Brief overview', 'Detailed', 'Exhaustive'],
   length: ['1 paragraph', '3 bullets', '5 bullets', 'Half page', '1 page'],
+  add_google_meet: ['No', 'Yes'],
 };
 
 export function IntentBlockRenderer({ intentData, onExecute }) {
@@ -108,10 +122,10 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
 
   const [formData, setFormData] = useState(initialPayload);
   const [focusedField, setFocusedField] = useState(null);
-  const [docQuery, setDocQuery] = useState('');
-  const [docOptions, setDocOptions] = useState([]);
-  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
-  const [docError, setDocError] = useState('');
+  const [fileQuery, setFileQuery] = useState('');
+  const [fileOptions, setFileOptions] = useState([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [fileError, setFileError] = useState('');
   const userId = useAuthStore((s) => s.userId);
 
   const [blockStatus, setBlockStatus] = useState(() => {
@@ -145,31 +159,54 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
   const isAllConfirmed = firstUnconfirmedIndex === -1;
   const activeIndex = isAllConfirmed ? keys.length : firstUnconfirmedIndex;
 
-  const IntentIcon = intentIcons[intent] || Sparkles;
+  const IntentIcon = intentIcons[intent] || FileText;
   const progress = Math.round((activeIndex / keys.length) * 100);
-  const docPickerFields = new Set(['source_doc_link', 'text_or_doc_link']);
+  const filePickerConfig = {
+    source_doc_link: {
+      type: 'document',
+      label: 'Google Docs',
+      placeholder: 'Search your Google Docs…',
+      emptyText: 'No Google Docs found. You can paste a link below.',
+      manualPlaceholder: 'Or paste a Google Doc link…',
+    },
+    text_or_doc_link: {
+      type: 'document',
+      label: 'Google Docs',
+      placeholder: 'Search your Google Docs…',
+      emptyText: 'No Google Docs found. You can paste a link or text below.',
+      manualPlaceholder: 'Or paste messy text / Doc link…',
+    },
+    sheet_link: {
+      type: 'spreadsheet',
+      label: 'Google Sheets',
+      placeholder: 'Search your Google Sheets…',
+      emptyText: 'No Google Sheets found. You can paste a link below.',
+      manualPlaceholder: 'Or paste a Google Sheets link…',
+    },
+  };
 
-  const loadDocs = async (query = '') => {
+  const loadFiles = async (config, query = '') => {
     if (!userId) return;
-    setIsLoadingDocs(true);
-    setDocError('');
+    setIsLoadingFiles(true);
+    setFileError('');
     try {
-      const data = await chatService.listGoogleDocs(userId, query);
-      setDocOptions(data.docs || []);
+      const data = await chatService.listGoogleFiles(userId, config.type, query);
+      setFileOptions(data.files || data.docs || []);
     } catch (error) {
       const detail = error.response?.data?.detail;
-      setDocError(typeof detail === 'string' ? detail : detail?.message || 'Could not load Google Docs.');
+      setFileError(typeof detail === 'string' ? detail : detail?.message || `Could not load ${config.label}.`);
     } finally {
-      setIsLoadingDocs(false);
+      setIsLoadingFiles(false);
     }
   };
 
   useEffect(() => {
     const activeKey = keys[activeIndex];
-    if (!docPickerFields.has(activeKey)) return;
-    const timeout = setTimeout(() => loadDocs(docQuery), 250);
+    const config = filePickerConfig[activeKey];
+    if (!config) return;
+    const timeout = setTimeout(() => loadFiles(config, fileQuery), 250);
     return () => clearTimeout(timeout);
-  }, [activeIndex, docQuery, userId]);
+  }, [activeIndex, fileQuery, userId]);
 
   const renderBlock = (key, index) => {
     if (index > activeIndex) return null;
@@ -178,8 +215,9 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
     const isActive = index === activeIndex;
     const isConfirmed = status === 'confirmed';
 
-    const isTextArea = key === 'body' || key === 'outline' || key === 'nl_queries' || key === 'text_or_doc_link';
-    const isDocPickerField = docPickerFields.has(key);
+    const isTextArea = key === 'body' || key === 'outline' || key === 'nl_queries' || key === 'text_or_doc_link' || key === 'description';
+    const filePicker = filePickerConfig[key];
+    const isFilePickerField = Boolean(filePicker);
     const isEmailField = key === 'to' || key === 'cc' || key === 'sender';
     const choices = fieldChoices[key] || null;
     const isOptional = optionalFields.has(key);
@@ -276,55 +314,55 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
                   {question}
                   {status === 'suggested' && (
                     <span className="ml-1.5 inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[10px] bg-primary/8 text-primary font-semibold align-middle">
-                      <Sparkles className="w-2.5 h-2.5" />AI prefilled
+                      <IntentIcon className="w-2.5 h-2.5" />AI prefilled
                     </span>
                   )}
                 </p>
 
                 {/* Input */}
-                {isDocPickerField ? (
+                {isFilePickerField ? (
                   <div className="space-y-3">
                     <div className="flex gap-2">
                       <input
                         type="text"
-                        value={docQuery}
-                        onChange={(e) => setDocQuery(e.target.value)}
+                        value={fileQuery}
+                        onChange={(e) => setFileQuery(e.target.value)}
                         className={inputClasses}
-                        placeholder="Search your Google Docs…"
+                        placeholder={filePicker.placeholder}
                         autoFocus
                       />
                       <button
                         type="button"
-                        onClick={() => loadDocs(docQuery)}
+                        onClick={() => loadFiles(filePicker, fileQuery)}
                         className="h-10 w-10 rounded-[10px] border border-hairline bg-surface-pearl text-ink-muted-80 hover:text-primary hover:border-primary/40 flex items-center justify-center transition-colors"
-                        title="Refresh Google Docs"
+                        title={`Refresh ${filePicker.label}`}
                       >
-                        <RefreshCw className={`w-4 h-4 ${isLoadingDocs ? 'animate-spin' : ''}`} />
+                        <RefreshCw className={`w-4 h-4 ${isLoadingFiles ? 'animate-spin' : ''}`} />
                       </button>
                     </div>
 
-                    {docError && <p className="text-[12px] text-red-500 leading-snug">{docError}</p>}
+                    {fileError && <p className="text-[12px] text-red-500 leading-snug">{fileError}</p>}
 
                     <div className="max-h-48 overflow-y-auto rounded-[10px] border border-hairline bg-surface-pearl divide-y divide-hairline">
-                      {docOptions.map(doc => (
+                      {fileOptions.map(file => (
                         <button
-                          key={doc.id}
+                          key={file.id}
                           type="button"
                           onClick={() => {
-                            handleChange(key, doc.url);
+                            handleChange(key, file.url);
                             setTimeout(() => confirmBlock(key), 100);
                           }}
                           className="w-full text-left px-3 py-2.5 bg-transparent hover:bg-primary/5 transition-colors cursor-pointer"
                         >
-                          <div className="text-[13px] font-medium text-ink truncate">{doc.name}</div>
+                          <div className="text-[13px] font-medium text-ink truncate">{file.name}</div>
                           <div className="text-[11px] text-ink-muted-48 truncate">
-                            {doc.modifiedTime ? `Modified ${new Date(doc.modifiedTime).toLocaleDateString()}` : doc.url}
+                            {file.modifiedTime ? `Modified ${new Date(file.modifiedTime).toLocaleDateString()}` : file.url}
                           </div>
                         </button>
                       ))}
-                      {!isLoadingDocs && docOptions.length === 0 && (
+                      {!isLoadingFiles && fileOptions.length === 0 && (
                         <div className="px-3 py-3 text-[12px] text-ink-muted-48">
-                          No Google Docs found. You can paste a link or text below.
+                          {filePicker.emptyText}
                         </div>
                       )}
                     </div>
@@ -334,7 +372,7 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
                       onChange={handleChangeAdapter}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); confirmBlock(key); } }}
                       className={`${inputClasses} min-h-[72px] resize-y leading-relaxed`}
-                      placeholder={key === 'text_or_doc_link' ? 'Or paste messy text / Doc link…' : 'Or paste a Google Doc link…'}
+                      placeholder={filePicker.manualPlaceholder}
                     />
                   </div>
                 ) : choices ? (

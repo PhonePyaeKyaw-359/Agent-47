@@ -63,6 +63,18 @@ export const chatService = {
       },
     });
     return response.data;
+  },
+
+  listGoogleFiles: async (userId, fileType = "document", query = "") => {
+    const response = await api.get(`/api/google-files`, {
+      params: {
+        user_id: userId,
+        file_type: fileType,
+        query,
+        page_size: 20,
+      },
+    });
+    return response.data;
   }
 };
 

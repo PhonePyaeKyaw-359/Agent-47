@@ -96,6 +96,9 @@ export default function Chat() {
       case 'generate_docs':
         payload = { title: '', content_type: '', outline: '', content_depth: '', tone: '' };
         break;
+      case 'schedule_event':
+        payload = { title: '', date: '', start_time: '', duration: '1 hour', attendees: '', description: '', add_google_meet: 'No' };
+        break;
       default:
         return;
     }
@@ -389,7 +392,7 @@ export default function Chat() {
                   },
                   {
                     icon: Calendar, label: 'Schedule Event', desc: 'Add a meeting to your calendar.',
-                    prompt: `Schedule an event titled "Team Sync" for tomorrow at 10:00 AM for 1 hour and add a short agenda in the description.`,
+                    intent: 'schedule_event',
                   },
                 ].map(({ icon: Icon, label, desc, prompt, intent }) => (
                   <button
