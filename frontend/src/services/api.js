@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Fallback to localhost if not set in .env
-const HTTP_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const HTTP_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 export const WS_BASE_URL = HTTP_BASE.replace(/^http/, 'ws');  // wss://...
 
 const api = axios.create({
