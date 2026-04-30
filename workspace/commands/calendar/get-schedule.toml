@@ -1,0 +1,17 @@
+description = "Show your schedule for today, or the date specified"
+prompt = """
+Please show me my schedule for today. To do that use the following steps:
+
+1) Use the people.getMe tool to get my information.
+2) Use the time.getTimeZone to get my local time zone.
+3) Either use the time.getCurrentDate or the user supplied date here: {{args}} to understand the current date.
+4) Call calendar.list to identify the calendar associated with me from step 1.
+5) Call calendar.listEvents to identify events on my calendar for the date we determined in step 3.
+6) Format the list of events in my local time zone from step 2 in the following format:
+
+> HH:MM - HH:MM: Event Title (attendance status) - Event Location
+> HH:MM - HH:MM: Event 2 Title (attendance status) - Event Location
+
+Note: If a calendar event has conflicting timezone information, prioritize the dateTime field over the timeZone field.
+
+"""

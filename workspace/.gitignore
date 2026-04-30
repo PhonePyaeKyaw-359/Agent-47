@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+
+# logs
+logs
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Auth tokens
+token.json
+gemini-cli-workspace-token.json
+.gemini-cli-workspace-master-key
+
+commit_message.txt
+
+# Release directory
+release/
+
+# VitePress
+docs/.vitepress/dist
+docs/.vitepress/cache

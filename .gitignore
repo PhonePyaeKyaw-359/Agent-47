@@ -18,10 +18,12 @@ backend/.token_key
 # SQLite database (runtime data)
 backend/data.db
 
-# Workspace MCP server — cloned separately from
-# https://github.com/gemini-cli-extensions/workspace
-workspace/
-
+# Workspace MCP server (excluding dependencies and credentials)
+workspace/node_modules/
+workspace/workspace-server/node_modules/
+workspace/workspace-server/dist/
+workspace/logs/
+workspace/.env
 # OS
 .DS_Store
 

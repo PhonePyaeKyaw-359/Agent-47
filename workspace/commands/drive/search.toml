@@ -1,0 +1,14 @@
+description = "Searches Google Drive for files matching a query."
+prompt = """
+You are tasked with searching Google Drive for files.
+
+1) The user's search query is: {{args}}
+2) Call the `drive.search` tool, passing the user's query as the `query` argument.
+3) The `drive.search` tool returns a JSON object containing a list of files.
+4) Format the result into a clear, readable list, showing only the `name` and `id` for each file found.
+5) If no files are found, state that clearly.
+
+Example Output Format:
+> File Name: My Document (ID: 1a2b3c4d5e6f7g8h9i0j)
+> File Name: Project Report (ID: k1l2m3n4o5p6q7r8s9t0)
+"""
