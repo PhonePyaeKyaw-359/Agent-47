@@ -83,6 +83,16 @@ export const chatService = {
       payload,
     });
     return response.data;
+  },
+
+  parseIntentPayload: async (userId, intent, text, payload = {}) => {
+    const response = await api.post(`/api/parse-intent-payload`, {
+      user_id: userId,
+      intent,
+      text,
+      payload,
+    });
+    return response.data;
   }
 };
 

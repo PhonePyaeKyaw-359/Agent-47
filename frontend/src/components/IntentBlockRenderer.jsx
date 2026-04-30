@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, Edit2, ArrowRight, ArrowLeft, History, Mail, FileText, Search, BarChart3, FilePlus, Send, RefreshCw, Calendar, Loader2, Upload, X, Presentation } from 'lucide-react';
+import { Check, Edit2, ArrowRight, ArrowLeft, History, Mail, FileText, Search, BarChart3, FilePlus, Send, RefreshCw, Calendar, Loader2, Upload, X, Presentation, Wand2 } from 'lucide-react';
 import { chatService } from '../services/api';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -138,11 +138,22 @@ const canAutoDraftEmailBody = (data, status) => (
   && (!data.body?.trim() || isEmailDraftPlaceholder(data.body))
 );
 
+const naturalExamples = {
+  send_email: 'Email nina@example.com a friendly update that the Q2 deck is ready for review.',
+  schedule_event: 'Schedule a 30 minute planning sync tomorrow at 10am with alex@example.com and add Google Meet.',
+  do_format: 'Turn these messy notes into a professional meeting memo.',
+  execute_summary: 'Summarize this Google Doc into 5 bullets focused on action items.',
+  summarize_slides: 'Summarize this Slides deck as key takeaways for leadership.',
+  data_analysis: 'Analyze this budget sheet and find the top spending categories.',
+  generate_docs: 'Create a detailed project proposal for the hackathon demo in a professional tone.',
+};
+
 export function IntentBlockRenderer({ intentData, onExecute }) {
   const { intent, payload } = intentData;
   const initialPayload = typeof payload === 'object' && payload !== null ? payload : {};
   const hiddenFields = new Set(['local_attachments']);
-  const keys = Object.keys(initialPayload).filter(key => !hiddenFields.has(key));
+  const isHiddenField = (key) => hiddenFields.has(key) || key.startsWith('__');
+  const keys = Object.keys(initialPayload).filter(key => !isHiddenField(key));
 
   const [formData, setFormData] = useState(initialPayload);
   const [focusedField, setFocusedField] = useState(null);
@@ -154,6 +165,11 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
   const [isDraftingBody, setIsDraftingBody] = useState(false);
   const [draftError, setDraftError] = useState('');
   const [attachmentError, setAttachmentError] = useState('');
+  const [naturalText, setNaturalText] = useState('');
+  const [isParsingIntent, setIsParsingIntent] = useState(false);
+  const [parseError, setParseError] = useState('');
+  const [parseNote, setParseNote] = useState('');
+  const [showBlocks, setShowBlocks] = useState(() => !initialPayload.__require_nl && keys.some(key => Boolean(initialPayload[key])));
   const userId = useAuthStore((s) => s.userId);
 
   const [blockStatus, setBlockStatus] = useState(() => {
@@ -170,6 +186,56 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
   const handleChange = (key, value) => {
     setFormData(prev => ({ ...prev, [key]: value }));
     setBlockStatus(prev => ({ ...prev, [key]: 'edited' }));
+  };
+
+  const applyParsedPayload = (parsedPayload = {}, missing = []) => {
+    const missingSet = new Set(missing);
+    let nextData = { ...formData };
+    const nextStatus = { ...blockStatus };
+
+    keys.forEach(key => {
+      if (!Object.prototype.hasOwnProperty.call(parsedPayload, key)) return;
+      if (['edited', 'confirmed'].includes(blockStatus[key])) return;
+
+      const value = parsedPayload[key];
+      const hasValue = Array.isArray(value)
+        ? value.length > 0
+        : Boolean(String(value ?? '').trim());
+
+      if (hasValue) {
+        nextData[key] = value;
+        nextStatus[key] = 'suggested';
+      } else if (missingSet.has(key)) {
+        nextStatus[key] = 'empty';
+      }
+    });
+
+    setFormData(nextData);
+    setBlockStatus(nextStatus);
+    setEditingIndex(null);
+    setShowBlocks(true);
+
+    if (intent === 'send_email') {
+      maybeDraftEmailBody('body', nextData, nextStatus);
+    }
+  };
+
+  const parseNaturalLanguage = async () => {
+    if (!naturalText.trim() || isParsingIntent) return;
+    setIsParsingIntent(true);
+    setParseError('');
+    setParseNote('');
+
+    try {
+      const data = await chatService.parseIntentPayload(userId, intent, naturalText, formData);
+      applyParsedPayload(data.payload || {}, data.missing || []);
+      setParseNote(data.notes || 'AI filled the blocks it could understand. Review anything still blank.');
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      setParseError(typeof detail === 'string' ? detail : detail?.message || 'Could not parse that sentence.');
+    } finally {
+      setIsParsingIntent(false);
+    }
   };
 
   const readLocalFile = (file) => new Promise((resolve, reject) => {
@@ -278,7 +344,10 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
     keys.forEach(k => {
       if (k === 'to' || k === 'cc' || k === 'sender') addCachedEmail(formData[k]);
     });
-    onExecute({ intent, payload: formData });
+    const cleanPayload = Object.fromEntries(
+      Object.entries(formData).filter(([key]) => !isHiddenField(key))
+    );
+    onExecute({ intent, payload: cleanPayload });
   };
 
   const firstUnconfirmedIndex = keys.findIndex(k => blockStatus[k] !== 'confirmed');
@@ -766,26 +835,75 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
             {intentLabels[intent] || "Action Setup"}
           </span>
           <span className="text-[12px] text-ink-muted-48 leading-tight mt-0.5 font-normal">
-            Step {Math.min(activeIndex + 1, keys.length)} of {keys.length}
+            {showBlocks ? `Step ${Math.min(activeIndex + 1, keys.length)} of ${keys.length}` : 'Start with one sentence'}
           </span>
         </div>
       </div>
 
+      <div className={`mb-4 rounded-[14px] border p-3.5 transition-colors ${showBlocks ? 'border-hairline bg-canvas-parchment/45' : 'border-primary/20 bg-primary/5'}`}>
+        <div className="flex items-start gap-2.5">
+          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-canvas text-primary border border-primary/15">
+            <IntentIcon className="h-3.5 w-3.5" />
+          </div>
+          <div className="min-w-0 flex-1 space-y-2.5">
+            <div>
+              <p className="text-[13px] font-semibold text-ink leading-snug">Tell Agent47 what you want done</p>
+              <p className="text-[12px] text-ink-muted-80 leading-snug mt-0.5">
+                Example: {naturalExamples[intent] || 'Describe the action in one clear sentence.'}
+              </p>
+            </div>
+            <textarea
+              value={naturalText}
+              onChange={(e) => setNaturalText(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  parseNaturalLanguage();
+                }
+              }}
+              className="w-full min-h-[74px] resize-y rounded-[10px] border border-hairline bg-surface-pearl px-3.5 py-2.5 text-[14px] text-ink leading-relaxed placeholder:text-ink-muted-48 focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/8"
+              placeholder="Type one natural-language instruction..."
+              disabled={isParsingIntent}
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setShowBlocks(true)}
+                className="text-[12px] font-medium text-ink-muted-80 hover:text-primary bg-transparent border-none cursor-pointer px-0"
+              >
+                Fill blocks manually
+              </button>
+              <button
+                type="button"
+                onClick={parseNaturalLanguage}
+                disabled={!naturalText.trim() || isParsingIntent}
+                className="inline-flex items-center gap-1.5 h-8 rounded-full bg-primary px-4 text-[13px] font-semibold text-white hover:bg-primary-focus disabled:opacity-40 disabled:pointer-events-none border-none cursor-pointer"
+              >
+                {isParsingIntent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                Fill blocks with AI
+              </button>
+            </div>
+            {parseError && <p className="text-[12px] text-red-500 leading-snug">{parseError}</p>}
+            {parseNote && <p className="text-[12px] text-primary leading-snug">{parseNote}</p>}
+          </div>
+        </div>
+      </div>
+
       {/* Progress bar */}
-      <div className="w-full bg-canvas-parchment rounded-full h-1 overflow-hidden mb-5">
+      {showBlocks && <div className="w-full bg-canvas-parchment rounded-full h-1 overflow-hidden mb-5">
         <div
           className="bg-primary h-1 rounded-full transition-all duration-500 ease-out"
           style={{ width: `${progress}%` }}
         />
-      </div>
+      </div>}
 
       {/* Blocks */}
-      <div>
+      {showBlocks && <div>
         {keys.map((key, index) => renderBlock(key, index))}
-      </div>
+      </div>}
 
       {/* Execute CTA */}
-      {isAllConfirmed && (
+      {showBlocks && isAllConfirmed && (
         <div className="mt-2 pt-4 border-t border-hairline flex justify-end animate-fade-in-up">
           <button
             onClick={handleExecute}

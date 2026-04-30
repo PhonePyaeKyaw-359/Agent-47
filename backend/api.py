@@ -1519,6 +1519,13 @@ class DraftEmailBodyRequest(BaseModel):
     user_id: str = "default_user"
 
 
+class ParseIntentPayloadRequest(BaseModel):
+    intent: str
+    text: str
+    payload: dict
+    user_id: str = "default_user"
+
+
 @app.get("/api/google-docs")
 async def list_google_docs(
     user_id: str = "default_user",
@@ -1691,6 +1698,116 @@ Requirements:
     if not body:
         raise HTTPException(status_code=500, detail="The email draft came back empty.")
     return {"body": body}
+
+
+@app.post("/api/parse-intent-payload")
+async def parse_intent_payload(request: ParseIntentPayloadRequest):
+    """Parse a one-sentence user instruction into editable action fields."""
+    _get_and_refresh_tokens_or_401(request.user_id)
+
+    intent = (request.intent or "").strip()
+    text = (request.text or "").strip()
+    template = request.payload or {}
+    allowed_keys = [
+        key for key in template.keys()
+        if key not in {"local_attachments"} and not key.startswith("__")
+    ]
+
+    if not intent or not allowed_keys:
+        raise HTTPException(status_code=400, detail="Missing action type or editable fields.")
+    if not text:
+        raise HTTPException(status_code=400, detail="Type one sentence before asking AI to fill the blocks.")
+
+    intent_hints = {
+        "send_email": (
+            "Extract recipient emails, email type, tone, subject, body/message details, sender/from name, "
+            "and attachment/link mentions. If no exact recipient email is present, leave to blank."
+        ),
+        "schedule_event": (
+            "Extract event title, date, start time, duration, attendee emails, description/agenda, "
+            "and whether the user asked for Google Meet."
+        ),
+        "do_format": "Extract source text or Doc link, desired action, style, and tone.",
+        "execute_summary": "Extract Google Doc link, desired summary length, and focus.",
+        "summarize_slides": "Extract Google Slides link, desired summary style or length, and focus.",
+        "data_analysis": "Extract Google Sheet link and the analysis questions.",
+        "generate_docs": "Extract document title, content type, outline/request, depth, and tone.",
+    }
+
+    client = _get_genai_client()
+    prompt = f"""
+Parse the user's natural-language request into fields for this action form.
+
+Return ONLY JSON with this shape:
+{{
+  "payload": {{
+    "field_name": "field value"
+  }},
+  "missing": ["field_name"],
+  "notes": "short helpful note"
+}}
+
+Action: {intent}
+Allowed fields: {allowed_keys}
+Current empty/template payload:
+{json.dumps(template, ensure_ascii=False)}
+
+Parsing guidance:
+- {intent_hints.get(intent, "Extract only fields explicitly supported by the allowed fields.")}
+- Fill only allowed fields.
+- Use empty string for unknown fields.
+- Do not invent emails, links, file IDs, dates, times, names, or facts.
+- Normalize obvious dates/times only when the user's wording is clear.
+- For yes/no fields, use "Yes" or "No".
+- For lists in a single field, use comma-separated plain text unless the template value is an array.
+- Keep generated text concise but useful.
+
+User sentence:
+{text}
+""".strip()
+
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={"response_mime_type": "application/json"},
+        )
+        parsed = json.loads(response.text or "{}")
+    except ClientError as exc:
+        code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+        if code == 429:
+            raise HTTPException(
+                status_code=429,
+                detail="Gemini quota exhausted. Please wait a moment and try again.",
+            )
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not parse the request: {str(exc)}")
+
+    raw_payload = parsed.get("payload") if isinstance(parsed, dict) else {}
+    if not isinstance(raw_payload, dict):
+        raw_payload = {}
+
+    cleaned_payload = {}
+    for key in allowed_keys:
+        value = raw_payload.get(key, "")
+        if value is None:
+            value = ""
+        if isinstance(template.get(key), list) and isinstance(value, str):
+            value = [item.strip() for item in value.split(",") if item.strip()]
+        elif not isinstance(value, (str, int, float, bool, list, dict)):
+            value = str(value)
+        cleaned_payload[key] = value
+
+    missing = parsed.get("missing", []) if isinstance(parsed, dict) else []
+    if not isinstance(missing, list):
+        missing = []
+
+    return {
+        "payload": cleaned_payload,
+        "missing": [key for key in missing if key in allowed_keys],
+        "notes": parsed.get("notes", "") if isinstance(parsed, dict) else "",
+    }
 
 
 @app.post("/api/execute-action")

@@ -91,25 +91,25 @@ export default function Chat() {
     };
     switch(intentName) {
       case 'send_email':
-        payload = { to: '', content_type: '', tone: '', subject: '', body: '', sender: '', attachment: '', local_attachments: [] };
+        payload = { __require_nl: true, to: '', content_type: '', tone: '', subject: '', body: '', sender: '', attachment: '', local_attachments: [] };
         break;
       case 'do_format':
-        payload = { text_or_doc_link: '', action: 'create_new', style: '', tone: '' };
+        payload = { __require_nl: true, text_or_doc_link: '', action: 'create_new', style: '', tone: '' };
         break;
       case 'execute_summary':
-        payload = { source_doc_link: '', length: '', focus: '' };
+        payload = { __require_nl: true, source_doc_link: '', length: '', focus: '' };
         break;
       case 'summarize_slides':
-        payload = { presentation_link: '', length: 'Executive summary', focus: '' };
+        payload = { __require_nl: true, presentation_link: '', length: 'Executive summary', focus: '' };
         break;
       case 'data_analysis':
-        payload = { sheet_link: '', nl_queries: '' };
+        payload = { __require_nl: true, sheet_link: '', nl_queries: '' };
         break;
       case 'generate_docs':
-        payload = { title: '', content_type: '', outline: '', content_depth: '', tone: '' };
+        payload = { __require_nl: true, title: '', content_type: '', outline: '', content_depth: '', tone: '' };
         break;
       case 'schedule_event':
-        payload = { title: '', date: '', start_time: '', duration: '1 hour', attendees: '', description: '', add_google_meet: 'No' };
+        payload = { __require_nl: true, title: '', date: '', start_time: '', duration: '1 hour', attendees: '', description: '', add_google_meet: 'No' };
         break;
       default:
         return;
