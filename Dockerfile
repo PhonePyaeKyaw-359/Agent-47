@@ -57,6 +57,7 @@ COPY --from=mcp-builder /build/node_modules/ workspace/node_modules/
 COPY --from=mcp-builder /build/workspace-server/dist/ workspace/workspace-server/dist/
 
 # ── Application source ───────────────────────────────────────────────────────
+COPY client_secret.json .
 COPY backend/ backend/
 
 # ── Runtime ──────────────────────────────────────────────────────────────────

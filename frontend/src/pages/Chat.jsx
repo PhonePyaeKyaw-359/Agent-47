@@ -80,15 +80,27 @@ export default function Chat() {
 
   const triggerIntentForm = (intentName) => {
     let payload = {};
+    const titleByIntent = {
+      send_email: 'Compose Email',
+      do_format: 'Format Document',
+      execute_summary: 'Generate Summary',
+      summarize_slides: 'Summarize Slides',
+      data_analysis: 'Analyze Data',
+      generate_docs: 'Create Document',
+      schedule_event: 'Schedule Event',
+    };
     switch(intentName) {
       case 'send_email':
-        payload = { to: '', content_type: '', subject: '', tone: '', body: '', sender: '', attachment: '' };
+        payload = { to: '', content_type: '', tone: '', subject: '', body: '', sender: '', attachment: '', local_attachments: [] };
         break;
       case 'do_format':
         payload = { text_or_doc_link: '', action: 'create_new', style: '', tone: '' };
         break;
       case 'execute_summary':
         payload = { source_doc_link: '', length: '', focus: '' };
+        break;
+      case 'summarize_slides':
+        payload = { presentation_link: '', length: 'Executive summary', focus: '' };
         break;
       case 'data_analysis':
         payload = { sheet_link: '', nl_queries: '' };
@@ -106,6 +118,7 @@ export default function Chat() {
     const aiMessage = {
       id: Date.now(),
       isUser: false,
+      sessionTitle: titleByIntent[intentName],
       text: `Please fill out the details below to proceed:\n\n\`\`\`json\n${JSON.stringify({ intent: intentName, payload }, null, 2)}\n\`\`\``
     };
     addMessage(aiMessage);
@@ -136,11 +149,14 @@ export default function Chat() {
     const isIntentExecution = typeof overrideText === 'object' && overrideText.intent;
 
     let displayText = trimmedInput;
+    let sessionTitle = '';
     if (isIntentExecution) {
       displayText = `Executing action: ${overrideText.intent.replace(/_/g, ' ')}...`;
+      const payload = overrideText.payload || {};
+      sessionTitle = payload.title || payload.subject || payload.source_doc_link || payload.presentation_link || payload.sheet_link || displayText;
     }
 
-    const userMessage = { text: displayText, rawText: trimmedInput, isUser: true, id: Date.now() };
+    const userMessage = { text: displayText, rawText: trimmedInput, isUser: true, id: Date.now(), sessionTitle };
     addMessage(userMessage);
     if (!overrideText) setInputValue('');
     setIsSending(true);
@@ -381,6 +397,10 @@ export default function Chat() {
                   {
                     icon: Search, label: 'TL;DR Generator', desc: 'Summarize a long Doc instantly.',
                     intent: 'execute_summary',
+                  },
+                  {
+                    icon: Presentation, label: 'Slides Summarizer', desc: 'Summarize an existing Slides deck.',
+                    intent: 'summarize_slides',
                   },
                   {
                     icon: FileSpreadsheet, label: 'Data Analyst', desc: 'Ask questions about your budget sheets.',

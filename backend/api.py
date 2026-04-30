@@ -15,6 +15,7 @@ import json
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from typing import Optional
 
@@ -96,10 +97,40 @@ def _validate_llm_environment() -> None:
         )
 
 
+def _get_genai_client():
+    """Create a Gemini client in either Vertex AI or API-key mode."""
+    from google import genai
+
+    _validate_llm_environment()
+    use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if use_vertex:
+        return genai.Client(
+            vertexai=True,
+            project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+            location=os.getenv("GOOGLE_CLOUD_LOCATION"),
+        )
+    return genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+
+
 def _extract_document_id(value: str) -> str:
     """Extract a Google Doc ID from a URL or return the trimmed value."""
     text = (value or "").strip()
     match = re.search(r"/document/d/([a-zA-Z0-9_-]+)", text)
+    if match:
+        return match.group(1)
+    if re.fullmatch(r"[a-zA-Z0-9_-]{20,}", text):
+        return text
+    return ""
+
+
+def _extract_presentation_id(value: str) -> str:
+    """Extract a Google Slides presentation ID from a URL or return the trimmed value."""
+    text = (value or "").strip()
+    match = re.search(r"/presentation/d/([a-zA-Z0-9_-]+)", text)
     if match:
         return match.group(1)
     if re.fullmatch(r"[a-zA-Z0-9_-]{20,}", text):
@@ -183,6 +214,172 @@ def _parse_docs_text(tool_text: str) -> str:
     if isinstance(parsed, dict):
         return str(parsed.get("content", "") or parsed.get("text", "")).strip()
     return str(parsed).strip()
+
+
+def _email_plain_text_to_html(body: str) -> str:
+    """Convert editable plain text into readable Gmail HTML."""
+    text = (body or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return ""
+
+    blocks = re.split(r"\n\s*\n", text)
+    html_blocks: list[str] = []
+
+    for block in blocks:
+        lines = [line.strip() for line in block.split("\n") if line.strip()]
+        if not lines:
+            continue
+
+        if all(re.match(r"^[-*•]\s+", line) for line in lines):
+            items = [
+                f"<li>{escape(re.sub(r'^[-*•]\\s+', '', line))}</li>"
+                for line in lines
+            ]
+            html_blocks.append(
+                "<ul style=\"margin:0 0 14px 22px;padding:0;line-height:1.55;\">"
+                + "".join(items)
+                + "</ul>"
+            )
+            continue
+
+        paragraph = "<br>".join(escape(line) for line in lines)
+        html_blocks.append(
+            f"<p style=\"margin:0 0 14px 0;line-height:1.55;\">{paragraph}</p>"
+        )
+
+    return (
+        "<div style=\"font-family:Arial,sans-serif;font-size:14px;"
+        "line-height:1.55;color:#202124;\">"
+        + "".join(html_blocks)
+        + "</div>"
+    )
+
+
+def _extract_urls(value: str) -> list[str]:
+    """Extract URLs from a user-provided attachment/link field."""
+    urls = re.findall(r"https?://[^\s,<>]+", value or "")
+    cleaned = []
+    for url in urls:
+        cleaned.append(url.rstrip(").,;"))
+    return cleaned
+
+
+def _attachment_kind_from_url(url: str) -> str:
+    if "/document/d/" in url:
+        return "Google Doc"
+    if "/presentation/d/" in url:
+        return "Google Slides"
+    if "/spreadsheets/d/" in url:
+        return "Google Sheet"
+    if "drive.google.com" in url or "docs.google.com" in url:
+        return "Google Drive file"
+    return "Link"
+
+
+async def _resolve_attachment_links(
+    user_id: str,
+    tokens: dict,
+    attachment_value: str,
+) -> list[dict]:
+    """Build display metadata for attachment links without blocking send on lookup."""
+    urls = _extract_urls(attachment_value)
+    if not urls:
+        return []
+
+    attachments = []
+    for url in urls:
+        title = _attachment_kind_from_url(url)
+        try:
+            result_text = await _call_workspace_tool(
+                user_id,
+                tokens,
+                "drive.search",
+                {"query": url, "pageSize": 1},
+            )
+            parsed = json.loads(result_text)
+            files = parsed.get("files", parsed) if isinstance(parsed, dict) else parsed
+            if isinstance(files, list) and files:
+                name = files[0].get("name")
+                if name:
+                    title = name
+        except Exception:
+            pass
+
+        attachments.append({"title": title, "url": url})
+    return attachments
+
+
+def _append_attachment_links_to_html(html_body: str, attachments: list[dict]) -> str:
+    """Append Google Workspace links to the outgoing HTML email."""
+    if not attachments:
+        return html_body
+
+    items = []
+    for attachment in attachments:
+        title = escape(str(attachment.get("title") or "Attachment"))
+        url = escape(str(attachment.get("url") or ""))
+        if not url:
+            continue
+        items.append(
+            f'<li style="margin:0 0 6px 0;"><a href="{url}" '
+            f'style="color:#0b57d0;text-decoration:underline;">{title}</a></li>'
+        )
+
+    if not items:
+        return html_body
+
+    section = (
+        '<div style="margin-top:18px;padding-top:12px;'
+        'border-top:1px solid #dadce0;">'
+        '<p style="margin:0 0 8px 0;font-weight:600;line-height:1.55;">'
+        "Attachments</p>"
+        '<ul style="margin:0 0 0 22px;padding:0;line-height:1.55;">'
+        + "".join(items)
+        + "</ul></div>"
+    )
+
+    if html_body.endswith("</div>"):
+        return html_body[:-6] + section + "</div>"
+    return html_body + section
+
+
+def _normalize_local_attachments(payload: dict) -> list[dict]:
+    """Validate local upload payloads for Gmail MIME attachments."""
+    raw_files = payload.get("local_attachments") or []
+    if not isinstance(raw_files, list):
+        return []
+
+    attachments = []
+    total_bytes = 0
+    for raw in raw_files:
+        if not isinstance(raw, dict):
+            continue
+        filename = str(raw.get("filename") or "").strip()
+        content = str(raw.get("content") or "").strip()
+        if not filename or not content:
+            continue
+        if "," in content and content.startswith("data:"):
+            content = content.split(",", 1)[1]
+
+        try:
+            size = int(raw.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0
+        total_bytes += size
+        attachments.append(
+            {
+                "filename": filename,
+                "content": content,
+                "contentType": str(raw.get("contentType") or "application/octet-stream"),
+            }
+        )
+
+    if total_bytes > 20 * 1024 * 1024:
+        raise HTTPException(
+            status_code=400,
+            detail="Local email attachments must be under 20 MB total.",
+        )
+    return attachments
 
 
 def _fallback_document_plan(source_text: str, style: str, tone: str) -> dict:
@@ -273,37 +470,39 @@ Source text:
 def _compose_doc_content_and_formats(plan: dict) -> tuple[str, list[dict]]:
     """Build plain text plus Docs API format ranges."""
     lines: list[str] = []
-    formats: list[dict] = []
-    current_index = 1
+    line_formats: list[dict] = []
+
+    def docs_index_len(text: str) -> int:
+        return len(text.encode("utf-16-le")) // 2
 
     def add_line(text: str, styles: str | list[str] | None = None) -> None:
-        nonlocal current_index
         clean = re.sub(r"\s+", " ", str(text or "")).strip()
         if not clean:
             lines.append("")
-            current_index += 1
             return
-        start = current_index
-        lines.append(clean)
-        current_index += len(clean) + 1
         if isinstance(styles, str):
             styles = [styles]
-        for style in styles or []:
-            formats.append(
-                {"startIndex": start, "endIndex": start + len(clean), "style": style}
-            )
+        lines.append(clean)
+        line_formats.append(
+            {
+                "line_index": len(lines) - 1,
+                "start_offset": 0,
+                "end_offset": docs_index_len(clean),
+                "styles": styles or [],
+            }
+        )
 
     def add_paragraph(text: str) -> None:
         clean = re.sub(r"\s+", " ", str(text or "")).strip()
         add_line(clean, "bodySpacing")
         label_match = re.match(r"^([A-Z][A-Za-z0-9 /&()'-]{1,40}:)", clean)
         if label_match:
-            start = current_index - len(clean) - 1
-            formats.append(
+            line_formats.append(
                 {
-                    "startIndex": start,
-                    "endIndex": start + len(label_match.group(1)),
-                    "style": "bold",
+                    "line_index": len(lines) - 1,
+                    "start_offset": 0,
+                    "end_offset": docs_index_len(label_match.group(1)),
+                    "styles": ["bold"],
                 }
             )
 
@@ -323,7 +522,29 @@ def _compose_doc_content_and_formats(plan: dict) -> tuple[str, list[dict]]:
             add_line(bullet, ["bullet", "bulletSpacing"])
         add_line("")
 
+    while lines and lines[-1] == "":
+        lines.pop()
+
     content = "\n".join(lines).strip() + "\n"
+    line_starts: list[int] = []
+    cursor = 1
+    for line in lines:
+        line_starts.append(cursor)
+        cursor += docs_index_len(line) + 1
+
+    max_index = docs_index_len(content) + 1
+    formats: list[dict] = []
+    for item in line_formats:
+        line_index = item["line_index"]
+        if line_index >= len(line_starts):
+            continue
+        start = line_starts[line_index] + item["start_offset"]
+        end = line_starts[line_index] + item["end_offset"]
+        if start >= max_index or end > max_index or start >= end:
+            continue
+        for style in item["styles"]:
+            formats.append({"startIndex": start, "endIndex": end, "style": style})
+
     return content, formats
 
 
@@ -464,6 +685,75 @@ Document text:
     }
 
 
+async def _execute_slides_summary(user_id: str, tokens: dict, payload: dict) -> dict:
+    presentation_link = (
+        payload.get("presentation_link")
+        or payload.get("presentation_id")
+        or payload.get("slides_link")
+        or ""
+    ).strip()
+    length = (payload.get("length") or "Executive summary").strip()
+    focus = (payload.get("focus") or "").strip()
+    presentation_id = _extract_presentation_id(presentation_link)
+
+    if not presentation_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Select a Google Slides deck or paste a valid Google Slides link before summarizing.",
+        )
+
+    metadata_text = await _call_workspace_tool(
+        user_id,
+        tokens,
+        "slides.getMetadata",
+        {"presentationId": presentation_id},
+    )
+    slide_text = (
+        await _call_workspace_tool(
+            user_id,
+            tokens,
+            "slides.getText",
+            {"presentationId": presentation_id},
+        )
+    ).strip()
+
+    if not slide_text:
+        raise HTTPException(status_code=400, detail="The selected Slides deck has no readable text.")
+
+    client = _get_genai_client()
+    prompt = f"""
+Summarize this Google Slides deck for the user. Return the answer in Markdown.
+Do not modify the presentation.
+
+Requested summary style: {length}
+Focus: {focus or "General deck summary"}
+
+Structure:
+- Start with a short deck overview.
+- Include the 3 to 5 most important takeaways.
+- Include a slide-by-slide summary when useful.
+- Call out missing context, sparse slides, or image-heavy slides if the extracted text suggests it.
+- Do not invent facts that are not present in the slide text.
+
+Presentation metadata:
+{metadata_text}
+
+Extracted slide text:
+{slide_text}
+""".strip()
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+    )
+    summary = (response.text or "").strip()
+    url = f"https://docs.google.com/presentation/d/{presentation_id}/edit"
+    return {
+        "result": summary or "I could read the Slides deck, but could not generate a summary.",
+        "presentation_id": presentation_id,
+        "url": url,
+    }
+
+
 async def _execute_generate_document(user_id: str, tokens: dict, payload: dict) -> dict:
     title = (payload.get("title") or "Untitled Document").strip()
     content_type = (payload.get("content_type") or "Document").strip()
@@ -516,12 +806,31 @@ async def _execute_schedule_event(user_id: str, tokens: dict, payload: dict) -> 
     duration = (payload.get("duration") or "1 hour").strip()
     description = (payload.get("description") or "").strip()
     attendees = (payload.get("attendees") or "").strip()
+    attachments = payload.get("attachments") or []
     add_meet = str(payload.get("add_google_meet") or "").strip().lower() in {
         "yes",
         "true",
         "1",
         "add",
     }
+
+    # Append Google Drive attachment links into the description
+    if attachments and isinstance(attachments, list):
+        attachment_lines = []
+        for att in attachments:
+            if not isinstance(att, dict):
+                continue
+            name = att.get("name", "Untitled")
+            url = att.get("url", "")
+            if not url:
+                file_id = att.get("id", "")
+                if file_id:
+                    url = f"https://drive.google.com/file/d/{file_id}/view"
+            if url:
+                attachment_lines.append(f"📎 {name}: {url}")
+        if attachment_lines:
+            separator = "\n\n---\n📂 Attachments:\n" if description else "📂 Attachments:\n"
+            description = description + separator + "\n".join(attachment_lines)
 
     if not title or not date_text or not start_time:
         raise HTTPException(
@@ -898,7 +1207,10 @@ async def auth_login(
     # Build callback URL — force https when behind Cloud Run's load balancer
     # (Cloud Run terminates TLS and forwards via HTTP internally, so
     # request.base_url would return http:// without this correction)
-    callback_url = "http://localhost:8000/auth/callback"
+    base_url = str(request.base_url)
+    if "run.app" in base_url:
+        base_url = base_url.replace("http://", "https://")
+    callback_url = f"{base_url.rstrip('/')}/auth/callback"
     url = generate_login_url(user_id=user_id, callback_url=callback_url)
     return {"user_id": user_id, "auth_url": url}
 
@@ -1202,6 +1514,11 @@ class ExecuteActionRequest(BaseModel):
     user_id: str = "default_user"
 
 
+class DraftEmailBodyRequest(BaseModel):
+    payload: dict
+    user_id: str = "default_user"
+
+
 @app.get("/api/google-docs")
 async def list_google_docs(
     user_id: str = "default_user",
@@ -1242,13 +1559,26 @@ async def list_google_files(
             "mime": "application/vnd.google-apps.presentation",
             "url": "https://docs.google.com/presentation/d/{id}/edit",
         },
+        "workspace": {
+            "mime": "",
+            "url": "",
+        },
     }
     config = file_configs.get(file_type)
     if not config:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
 
     safe_query = query.replace("\\", "\\\\").replace("'", "\\'")
-    drive_query = f"mimeType='{config['mime']}' and trashed=false"
+    if file_type == "workspace":
+        drive_query = (
+            "("
+            "mimeType='application/vnd.google-apps.document' or "
+            "mimeType='application/vnd.google-apps.presentation' or "
+            "mimeType='application/vnd.google-apps.spreadsheet'"
+            ") and trashed=false"
+        )
+    else:
+        drive_query = f"mimeType='{config['mime']}' and trashed=false"
     if safe_query.strip():
         drive_query += f" and name contains '{safe_query.strip()}'"
 
@@ -1271,12 +1601,22 @@ async def list_google_files(
             file_id = file.get("id")
             if not file_id:
                 continue
+            mime_type = file.get("mimeType", "")
+            if mime_type == "application/vnd.google-apps.document":
+                url = f"https://docs.google.com/document/d/{file_id}/edit"
+            elif mime_type == "application/vnd.google-apps.presentation":
+                url = f"https://docs.google.com/presentation/d/{file_id}/edit"
+            elif mime_type == "application/vnd.google-apps.spreadsheet":
+                url = f"https://docs.google.com/spreadsheets/d/{file_id}/edit"
+            else:
+                url = config["url"].format(id=file_id) if config["url"] else f"https://drive.google.com/file/d/{file_id}/view"
             docs.append(
                 {
                     "id": file_id,
                     "name": file.get("name") or "Untitled document",
                     "modifiedTime": file.get("modifiedTime"),
-                    "url": config["url"].format(id=file_id),
+                    "mimeType": mime_type,
+                    "url": url,
                 }
             )
         return {"files": docs, "docs": docs}
@@ -1285,6 +1625,72 @@ async def list_google_files(
             status_code=500,
             detail=f"Failed to list Google Docs: {str(exc)}",
         )
+
+
+@app.post("/api/draft-email-body")
+async def draft_email_body(request: DraftEmailBodyRequest):
+    """Draft an editable email body after the user confirms subject/context."""
+    _get_and_refresh_tokens_or_401(request.user_id)
+
+    payload = request.payload or {}
+    subject = (payload.get("subject") or "").strip()
+    recipient = (payload.get("to") or "").strip()
+    content_type = (payload.get("content_type") or "email").strip()
+    tone = (payload.get("tone") or "professional").strip()
+    sender = (payload.get("sender") or "").strip()
+    attachment = (payload.get("attachment") or "").strip()
+
+    if not subject:
+        raise HTTPException(
+            status_code=400,
+            detail="Add an email subject before drafting the body.",
+        )
+
+    client = _get_genai_client()
+    prompt = f"""
+Draft a ready-to-edit email body for the user's email composer.
+
+Return ONLY plain text body content. Do not include the subject line. Do not wrap in Markdown.
+
+Context:
+- Recipient(s): {recipient or "Not specified"}
+- Email type: {content_type}
+- Tone: {tone}
+- Subject: {subject}
+- Sender/from name: {sender or "Not specified"}
+- Attachment/link note: {attachment or "None"}
+
+Requirements:
+- Write a clear, readable email with intentional line breaks.
+- Put a blank line between the greeting, each paragraph, any list, and the sign-off.
+- Keep paragraphs to 1 or 2 sentences each.
+- If there are 3 or more details, use a short hyphen-bullet list with one item per line.
+- Match the requested tone without sounding robotic.
+- Include a greeting when a recipient is known; otherwise use a neutral greeting.
+- If attachment/link note is provided, mention it naturally.
+- If sender/from name is provided, sign off with that name; otherwise use a simple sign-off without inventing a name.
+- Do not invent specific facts, dates, promises, or contact details not provided by the user.
+""".strip()
+
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
+    except ClientError as exc:
+        code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+        if code == 429:
+            raise HTTPException(
+                status_code=429,
+                detail="Gemini quota exhausted. Please wait a moment and try again.",
+            )
+        raise
+
+    body = (response.text or "").strip()
+    body = re.sub(r"^```(?:text|markdown)?\s*|\s*```$", "", body).strip()
+    if not body:
+        raise HTTPException(status_code=500, detail="The email draft came back empty.")
+    return {"body": body}
 
 
 @app.post("/api/execute-action")
@@ -1314,6 +1720,14 @@ async def execute_action(request: ExecuteActionRequest):
         
         _WORKSPACE_DIST = Path(__file__).resolve().parent.parent / "workspace" / "workspace-server" / "dist" / "index.js"
         env = _workspace_env(user_id, tokens)
+        body_html = _email_plain_text_to_html(payload.get("body", ""))
+        attachment_links = await _resolve_attachment_links(
+            user_id,
+            tokens,
+            str(payload.get("attachment") or ""),
+        )
+        local_attachments = _normalize_local_attachments(payload)
+        body_html = _append_attachment_links_to_html(body_html, attachment_links)
         
         server_params = StdioServerParameters(command="node", args=[str(_WORKSPACE_DIST), "--use-dot-names"], env=env)
         try:
@@ -1324,15 +1738,31 @@ async def execute_action(request: ExecuteActionRequest):
                     mcp_args = {
                         "to": payload.get("to", ""),
                         "subject": payload.get("subject", ""),
-                        "body": payload.get("body", ""),
+                        "body": body_html,
                         "isHtml": True
                     }
                     if "cc" in payload and payload["cc"]:
                         mcp_args["cc"] = payload["cc"]
+                    if local_attachments:
+                        mcp_args["attachments"] = local_attachments
                     
                     result = await session.call_tool("gmail.send", arguments=mcp_args)
                     text_content = next((item.text for item in result.content if item.type == 'text'), str(result.content))
-                    return {"result": f"Email sent successfully!"}
+                    try:
+                        send_result = json.loads(text_content)
+                        if isinstance(send_result, dict) and send_result.get("error"):
+                            raise RuntimeError(send_result["error"])
+                    except json.JSONDecodeError:
+                        pass
+                    attachment_note = (
+                        (
+                            f" Included {len(attachment_links)} attachment link(s)"
+                            f" and {len(local_attachments)} local file(s)."
+                        )
+                        if attachment_links or local_attachments
+                        else ""
+                    )
+                    return {"result": f"Email sent successfully!{attachment_note}"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"API Execution failed: {str(e)}")
 
@@ -1356,6 +1786,17 @@ async def execute_action(request: ExecuteActionRequest):
             raise HTTPException(
                 status_code=500,
                 detail=f"Document summary failed: {str(exc)}",
+            )
+
+    if intent == "summarize_slides":
+        try:
+            return await _execute_slides_summary(user_id, tokens, payload)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Slides summary failed: {str(exc)}",
             )
 
     if intent == "generate_docs":

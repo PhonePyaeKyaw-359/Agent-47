@@ -75,6 +75,14 @@ export const chatService = {
       },
     });
     return response.data;
+  },
+
+  draftEmailBody: async (userId, payload = {}) => {
+    const response = await api.post(`/api/draft-email-body`, {
+      user_id: userId,
+      payload,
+    });
+    return response.data;
   }
 };
 

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Check, Edit2, ArrowRight, History, Mail, FileText, Search, BarChart3, FilePlus, Send, RefreshCw, Calendar } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Check, Edit2, ArrowRight, ArrowLeft, History, Mail, FileText, Search, BarChart3, FilePlus, Send, RefreshCw, Calendar, Loader2, Upload, X, Presentation } from 'lucide-react';
 import { chatService } from '../services/api';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -23,6 +23,7 @@ const intentIcons = {
   send_email: Mail,
   do_format: FileText,
   execute_summary: Search,
+  summarize_slides: Presentation,
   data_analysis: BarChart3,
   generate_docs: FilePlus,
   schedule_event: Calendar,
@@ -32,6 +33,7 @@ const intentLabels = {
   send_email: "Compose Email",
   do_format: "Format Document",
   execute_summary: "Generate Summary",
+  summarize_slides: "Summarize Slides",
   data_analysis: "Analyze Data",
   generate_docs: "Create Document",
   schedule_event: "Schedule Event",
@@ -46,7 +48,7 @@ const fieldQuestions = {
     tone:         "What tone should I use? (e.g. formal, friendly, casual…)",
     body:         "What should the email say?",
     sender:       "Who is this email from?",
-    attachment:   "Any attachments? Paste a link or leave blank.",
+    attachment:   "Attach a Google Doc, Slides, Sheet, or Drive link? Leave blank if none.",
   },
   do_format: {
     text_or_doc_link: "Paste the messy text or a Google Doc link here.",
@@ -58,6 +60,11 @@ const fieldQuestions = {
     source_doc_link: "Paste the Google Doc link to summarize.",
     length:          "How long should the summary be? (e.g. 2 paragraphs, 5 bullets…)",
     focus:           "Anything specific to focus on? Leave blank for a general summary.",
+  },
+  summarize_slides: {
+    presentation_link: "Which Google Slides deck should I summarize?",
+    length:            "What kind of summary do you want?",
+    focus:             "Anything specific to focus on? Leave blank for a general deck summary.",
   },
   data_analysis: {
     sheet_link: "Paste the Google Sheets link here.",
@@ -93,6 +100,7 @@ const fieldShortLabels = {
   tone: 'Tone', body: 'Body', sender: 'From', attachment: 'Attachment',
   text_or_doc_link: 'Source', action: 'Action', style: 'Style',
   source_doc_link: 'Source Doc', length: 'Length', focus: 'Focus',
+  presentation_link: 'Slides Deck',
   sheet_link: 'Sheet', nl_queries: 'Questions', title: 'Title',
   outline: 'Outline', content_depth: 'Depth', date: 'Date',
   start_time: 'Start', duration: 'Duration', attendees: 'Guests',
@@ -111,14 +119,30 @@ const fieldChoices = {
   tone: ['Professional', 'Friendly', 'Casual', 'Academic', 'Formal'],
   content_type: ['Follow-up', 'Cold outreach', 'Update', 'Invitation', 'Thank you', 'Proposal', 'Report', 'Guide'],
   content_depth: ['Brief overview', 'Detailed', 'Exhaustive'],
-  length: ['1 paragraph', '3 bullets', '5 bullets', 'Half page', '1 page'],
+  length: ['Executive summary', 'Slide-by-slide', 'Key takeaways', 'Action items', '1 paragraph', '3 bullets', '5 bullets', 'Half page', '1 page'],
   add_google_meet: ['No', 'Yes'],
 };
+
+const emailDraftPlaceholders = new Set([
+  '(draft content)',
+  '(write the actual drafted email body here based on the subject and user context)',
+]);
+
+const isEmailDraftPlaceholder = (value) => (
+  typeof value === 'string' && emailDraftPlaceholders.has(value.trim().toLowerCase())
+);
+
+const canAutoDraftEmailBody = (data, status) => (
+  Boolean(data.subject?.trim())
+  && !['edited', 'confirmed'].includes(status.body)
+  && (!data.body?.trim() || isEmailDraftPlaceholder(data.body))
+);
 
 export function IntentBlockRenderer({ intentData, onExecute }) {
   const { intent, payload } = intentData;
   const initialPayload = typeof payload === 'object' && payload !== null ? payload : {};
-  const keys = Object.keys(initialPayload);
+  const hiddenFields = new Set(['local_attachments']);
+  const keys = Object.keys(initialPayload).filter(key => !hiddenFields.has(key));
 
   const [formData, setFormData] = useState(initialPayload);
   const [focusedField, setFocusedField] = useState(null);
@@ -126,6 +150,10 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
   const [fileOptions, setFileOptions] = useState([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [fileError, setFileError] = useState('');
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [isDraftingBody, setIsDraftingBody] = useState(false);
+  const [draftError, setDraftError] = useState('');
+  const [attachmentError, setAttachmentError] = useState('');
   const userId = useAuthStore((s) => s.userId);
 
   const [blockStatus, setBlockStatus] = useState(() => {
@@ -133,19 +161,117 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
     keys.forEach(key => { s[key] = initialPayload[key] ? 'suggested' : 'empty'; });
     return s;
   });
+  const blockStatusRef = useRef(blockStatus);
+
+  useEffect(() => {
+    blockStatusRef.current = blockStatus;
+  }, [blockStatus]);
 
   const handleChange = (key, value) => {
     setFormData(prev => ({ ...prev, [key]: value }));
     setBlockStatus(prev => ({ ...prev, [key]: 'edited' }));
   };
 
-  const confirmBlock = (key) => {
-    setBlockStatus(prev => ({ ...prev, [key]: 'confirmed' }));
+  const readLocalFile = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const content = result.includes(',') ? result.split(',').pop() : result;
+      resolve({
+        filename: file.name,
+        content,
+        contentType: file.type || 'application/octet-stream',
+        size: file.size,
+      });
+    };
+    reader.onerror = () => reject(reader.error || new Error('Could not read file.'));
+    reader.readAsDataURL(file);
+  });
+
+  const handleLocalAttachmentUpload = async (files) => {
+    const selected = Array.from(files || []);
+    if (!selected.length) return;
+
+    const current = formData.local_attachments || [];
+    const totalBytes = [...current, ...selected].reduce((sum, file) => sum + (file.size || 0), 0);
+    if (totalBytes > 20 * 1024 * 1024) {
+      setAttachmentError('Keep total local attachments under 20 MB for reliable Gmail sending.');
+      return;
+    }
+
+    setAttachmentError('');
+    try {
+      const uploaded = await Promise.all(selected.map(readLocalFile));
+      setFormData(prev => ({
+        ...prev,
+        local_attachments: [...(prev.local_attachments || []), ...uploaded],
+      }));
+      setBlockStatus(prev => ({ ...prev, attachment: 'edited' }));
+    } catch {
+      setAttachmentError('Could not read one of the selected files.');
+    }
+  };
+
+  const removeLocalAttachment = (filename, index) => {
+    setFormData(prev => ({
+      ...prev,
+      local_attachments: (prev.local_attachments || []).filter((file, i) => (
+        i !== index || file.filename !== filename
+      )),
+    }));
+    setBlockStatus(prev => ({ ...prev, attachment: 'edited' }));
+  };
+
+  const maybeDraftEmailBody = async (triggerKey, data = formData, status = blockStatus) => {
+    if (intent !== 'send_email') return;
+    if (!['to', 'content_type', 'subject', 'tone', 'sender', 'attachment', 'body'].includes(triggerKey)) return;
+    if (isDraftingBody || !canAutoDraftEmailBody(data, status)) return;
+
+    setIsDraftingBody(true);
+    setDraftError('');
+
+    try {
+      const response = await chatService.draftEmailBody(userId, data);
+      const draft = (response.body || '').trim();
+      if (!draft) return;
+
+      setFormData(prev => (
+        !canAutoDraftEmailBody(prev, blockStatusRef.current)
+          ? prev
+          : { ...prev, body: draft }
+      ));
+      setBlockStatus(prev => (
+        ['edited', 'confirmed'].includes(prev.body)
+          ? prev
+          : { ...prev, body: 'suggested' }
+      ));
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      setDraftError(typeof detail === 'string' ? detail : detail?.message || 'Could not draft the email body.');
+    } finally {
+      setIsDraftingBody(false);
+    }
+  };
+
+  const confirmBlock = async (key) => {
+    const nextStatus = { ...blockStatus, [key]: 'confirmed' };
+    setBlockStatus(nextStatus);
     if (key === 'to' || key === 'cc' || key === 'sender') addCachedEmail(formData[key]);
+    await maybeDraftEmailBody(key, formData, nextStatus);
+    setEditingIndex(null);
   };
 
   const editBlock = (key) => {
+    const index = keys.indexOf(key);
+    if (index >= 0) setEditingIndex(index);
     setBlockStatus(prev => ({ ...prev, [key]: 'edited' }));
+  };
+
+  const jumpToBlock = (index) => {
+    if (index <= firstUnconfirmedIndex || isAllConfirmed) {
+      setEditingIndex(index);
+      setBlockStatus(prev => ({ ...prev, [keys[index]]: 'edited' }));
+    }
   };
 
   const handleExecute = () => {
@@ -157,7 +283,16 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
 
   const firstUnconfirmedIndex = keys.findIndex(k => blockStatus[k] !== 'confirmed');
   const isAllConfirmed = firstUnconfirmedIndex === -1;
-  const activeIndex = isAllConfirmed ? keys.length : firstUnconfirmedIndex;
+  const activeIndex = editingIndex ?? (isAllConfirmed ? keys.length : firstUnconfirmedIndex);
+
+  useEffect(() => {
+    const activeKey = keys[activeIndex];
+    if (intent === 'send_email' && activeKey === 'body') {
+      maybeDraftEmailBody('body');
+    }
+    // Draft only when the user reaches the body step or changes the subject.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex, intent, formData.subject]);
 
   const IntentIcon = intentIcons[intent] || FileText;
   const progress = Math.round((activeIndex / keys.length) * 100);
@@ -182,6 +317,20 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
       placeholder: 'Search your Google Sheets…',
       emptyText: 'No Google Sheets found. You can paste a link below.',
       manualPlaceholder: 'Or paste a Google Sheets link…',
+    },
+    presentation_link: {
+      type: 'presentation',
+      label: 'Google Slides',
+      placeholder: 'Search your Google Slides…',
+      emptyText: 'No Google Slides decks found. You can paste a link below.',
+      manualPlaceholder: 'Or paste a Google Slides link…',
+    },
+    attachment: {
+      type: 'workspace',
+      label: 'Google Docs, Slides, or Sheets',
+      placeholder: 'Search Docs, Slides, or Sheets…',
+      emptyText: 'No Workspace files found. You can paste links below.',
+      manualPlaceholder: 'Paste Google Doc, Slides, Sheet, or Drive links…',
     },
   };
 
@@ -209,11 +358,13 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
   }, [activeIndex, fileQuery, userId]);
 
   const renderBlock = (key, index) => {
-    if (index > activeIndex) return null;
+    const shouldShow = index <= activeIndex || blockStatus[key] === 'confirmed';
+    if (!shouldShow) return null;
 
     const status = blockStatus[key] || 'empty';
-    const isActive = index === activeIndex;
+    const isActive = index === activeIndex && activeIndex < keys.length;
     const isConfirmed = status === 'confirmed';
+    const canJumpBack = index < activeIndex || isAllConfirmed;
 
     const isTextArea = key === 'body' || key === 'outline' || key === 'nl_queries' || key === 'text_or_doc_link' || key === 'description';
     const filePicker = filePickerConfig[key];
@@ -225,6 +376,9 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
     const value = formData[key];
     let displayValue = value;
     if (typeof value === 'object' && value !== null) displayValue = JSON.stringify(value, null, 2);
+    const localAttachments = Array.isArray(formData.local_attachments) ? formData.local_attachments : [];
+    const attachmentCount = localAttachments.length;
+    const hasFieldValue = Boolean(displayValue) || (key === 'attachment' && attachmentCount > 0);
 
     const handleChangeAdapter = (e) => {
       let val = e.target.value;
@@ -262,17 +416,24 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
       <div key={key} className="relative flex gap-3 animate-fade-in-up">
         {/* Stepper dot + line */}
         <div className="flex flex-col items-center">
-          <div className={`
+          <button
+            type="button"
+            onClick={() => jumpToBlock(index)}
+            disabled={!canJumpBack && !isConfirmed}
+            title={canJumpBack || isConfirmed ? `Edit ${shortLabel}` : undefined}
+            className={`
             w-7 h-7 rounded-full flex items-center justify-center shrink-0 z-10
             transition-all duration-300 text-[12px] font-semibold font-display
+            border-none outline-none
             ${isConfirmed
               ? 'bg-primary text-white shadow-[0_0_0_3px_rgba(0,102,204,0.12)]'
               : isActive
                 ? 'bg-canvas border-2 border-primary text-primary shadow-[0_0_0_3px_rgba(0,102,204,0.08)]'
                 : 'bg-canvas-parchment border border-hairline text-ink-muted-48'}
+            ${(canJumpBack || isConfirmed) ? 'cursor-pointer hover:scale-105' : 'cursor-default'}
           `}>
             {isConfirmed ? <Check className="w-3.5 h-3.5" /> : <span>{index + 1}</span>}
-          </div>
+          </button>
           {index < keys.length - 1 && (
             <div className={`
               w-[1.5px] flex-1 min-h-[20px] transition-colors duration-300 mt-1 mb-1
@@ -283,10 +444,14 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
 
         {/* Block content */}
         <div className={`flex-1 pb-4 transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-55'}`}>
-          <div className={`
+          <div
+            onClick={() => {
+              if (isConfirmed || canJumpBack) jumpToBlock(index);
+            }}
+            className={`
             border rounded-[14px] p-3.5 transition-all duration-300
             ${isConfirmed
-              ? 'bg-canvas-parchment/50 border-hairline'
+              ? 'bg-canvas-parchment/50 border-hairline cursor-pointer hover:border-primary/25 hover:bg-primary/5'
               : 'bg-canvas border-primary/15 shadow-[0_2px_12px_rgba(0,102,204,0.04)]'}
           `}>
 
@@ -295,12 +460,19 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted-48">{shortLabel}</span>
-                  <button onClick={() => editBlock(key)} className="text-[11px] font-medium text-ink-muted-48 hover:text-primary flex items-center gap-1 transition-colors bg-transparent border-none cursor-pointer px-1.5 py-0.5 rounded-md hover:bg-primary/5">
+                  <button onClick={(e) => { e.stopPropagation(); editBlock(key); }} className="text-[11px] font-medium text-ink-muted-48 hover:text-primary flex items-center gap-1 transition-colors bg-transparent border-none cursor-pointer px-1.5 py-0.5 rounded-md hover:bg-primary/5">
                     <Edit2 className="w-3 h-3" /> Edit
                   </button>
                 </div>
                 <div className="text-[14px] text-ink leading-relaxed line-clamp-3 overflow-hidden relative pr-2 font-normal">
-                  {displayValue || <em className="text-ink-muted-48 font-normal">No content provided</em>}
+                  {key === 'attachment' && attachmentCount > 0 ? (
+                    <span>
+                      {displayValue ? `${displayValue}\n` : ''}
+                      {attachmentCount} local file{attachmentCount === 1 ? '' : 's'} attached
+                    </span>
+                  ) : (
+                    displayValue || <em className="text-ink-muted-48 font-normal">No content provided</em>
+                  )}
                   {displayValue && displayValue.length > 150 && (
                     <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-canvas-parchment/50 to-transparent pointer-events-none" />
                   )}
@@ -318,6 +490,51 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
                     </span>
                   )}
                 </p>
+
+                {intent === 'schedule_event' && key === 'description' && (
+                  <div className="mt-3 mb-4 p-4 bg-primary/5 border border-primary/15 rounded-[12px] text-[13px] text-ink-muted-80 space-y-3 relative">
+                    <p className="font-semibold text-primary text-[14px]">📝 What "Add description" is</p>
+                    <p className="leading-relaxed">It’s a detailed notes field for your event. Unlike the title (which is short), this section is where you explain everything about the meeting.</p>
+                    <p className="leading-relaxed bg-white/50 p-2 rounded-md">Think of it as:<br/><span className="text-ink font-medium">👉 the full context + instructions for anyone attending</span></p>
+                    
+                    <div className="pt-1">
+                      <p className="font-semibold text-ink mb-2">🔍 What you should put inside:</p>
+                      <ul className="space-y-2 list-none pl-0">
+                        <li><strong className="text-ink">1. 📌 Purpose of the event</strong><br/><span className="opacity-80 block mt-0.5">Explain why this meeting exists (e.g., "Weekly FlickShare growth sync")</span></li>
+                        <li><strong className="text-ink">2. 📋 Agenda (very important)</strong><br/><span className="opacity-80 block mt-0.5">List what will happen during the meeting</span></li>
+                        <li><strong className="text-ink">3. 🔗 Important links</strong><br/><span className="opacity-80 block mt-0.5">Docs (Notion, Google Docs), GitHub repo, Figma designs</span></li>
+                        <li><strong className="text-ink">4. 👥 Instructions for participants</strong><br/><span className="opacity-80 block mt-0.5">Tell people what to prepare (e.g., "Bring latest analytics data")</span></li>
+                        <li><strong className="text-ink">5. 📎 Extra context / notes</strong><br/><span className="opacity-80 block mt-0.5">Anything people should know before joining (e.g., "This meeting is recorded")</span></li>
+                      </ul>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const template = "1. 📌 Purpose of the event:\n\n2. 📋 Agenda:\n\n3. 🔗 Important links:\n\n4. 👥 Instructions for participants:\n\n5. 📎 Extra context / notes:\n";
+                        handleChange(key, template);
+                      }}
+                      className="mt-3 w-full bg-white border border-primary/20 text-primary hover:bg-primary hover:text-white font-medium py-2 rounded-lg transition-colors text-[13px] flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" /> Use this template
+                    </button>
+                  </div>
+                )}
+
+                {intent === 'send_email' && key === 'body' && isDraftingBody && (
+                  <div className="inline-flex items-center gap-1.5 text-[12px] text-primary font-medium bg-primary/5 rounded-full px-2.5 py-1">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Drafting from your subject
+                  </div>
+                )}
+                
+                {intent === 'send_email' && key === 'body' && !isDraftingBody && (!displayValue || isEmailDraftPlaceholder(displayValue)) && (
+                  <button
+                    type="button"
+                    onClick={() => maybeDraftEmailBody('subject')}
+                    className="inline-flex items-center gap-1.5 text-[12px] text-primary font-medium bg-primary/10 hover:bg-primary/20 rounded-full px-2.5 py-1 transition-colors mb-2 cursor-pointer"
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Auto-draft body now
+                  </button>
+                )}
 
                 {/* Input */}
                 {isFilePickerField ? (
@@ -349,7 +566,10 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
                           key={file.id}
                           type="button"
                           onClick={() => {
-                            handleChange(key, file.url);
+                            const nextValue = key === 'attachment' && displayValue
+                              ? `${displayValue}\n${file.url}`
+                              : file.url;
+                            handleChange(key, nextValue);
                             setTimeout(() => confirmBlock(key), 100);
                           }}
                           className="w-full text-left px-3 py-2.5 bg-transparent hover:bg-primary/5 transition-colors cursor-pointer"
@@ -368,12 +588,55 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
                     </div>
 
                     <textarea
-                      value={displayValue || ''}
+                      value={isEmailDraftPlaceholder(displayValue) ? "" : (displayValue || '')}
                       onChange={handleChangeAdapter}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); confirmBlock(key); } }}
                       className={`${inputClasses} min-h-[72px] resize-y leading-relaxed`}
                       placeholder={filePicker.manualPlaceholder}
                     />
+
+                    {key === 'attachment' && (
+                      <div className="space-y-2">
+                        <label className="flex items-center justify-center gap-2 min-h-10 rounded-[10px] border border-dashed border-primary/30 bg-primary/5 text-primary text-[13px] font-medium cursor-pointer hover:bg-primary/8 transition-colors">
+                          <Upload className="w-4 h-4" />
+                          Upload local files
+                          <input
+                            type="file"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              handleLocalAttachmentUpload(e.target.files);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+
+                        {attachmentError && <p className="text-[12px] text-red-500 leading-snug">{attachmentError}</p>}
+
+                        {localAttachments.length > 0 && (
+                          <div className="rounded-[10px] border border-hairline bg-surface-pearl divide-y divide-hairline overflow-hidden">
+                            {localAttachments.map((file, fileIndex) => (
+                              <div key={`${file.filename}-${fileIndex}`} className="flex items-center justify-between gap-2 px-3 py-2">
+                                <div className="min-w-0">
+                                  <div className="text-[13px] font-medium text-ink truncate">{file.filename}</div>
+                                  <div className="text-[11px] text-ink-muted-48">
+                                    {file.size ? `${Math.max(1, Math.round(file.size / 1024))} KB` : 'Local file'}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeLocalAttachment(file.filename, fileIndex)}
+                                  className="w-7 h-7 rounded-full border border-transparent bg-transparent text-ink-muted-48 hover:text-red-500 hover:bg-red-50 flex items-center justify-center transition-colors"
+                                  title={`Remove ${file.filename}`}
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : choices ? (
                   /* ── Chip selector ─────────────────────────── */
@@ -398,11 +661,11 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
                   </div>
                 ) : isTextArea ? (
                   <textarea
-                    value={displayValue || ''}
+                    value={isEmailDraftPlaceholder(displayValue) ? "" : (displayValue || '')}
                     onChange={handleChangeAdapter}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); confirmBlock(key); } }}
                     autoFocus
-                    className={`${inputClasses} min-h-[88px] resize-y leading-relaxed`}
+                    className={`${inputClasses} ${key === 'body' ? 'min-h-[180px]' : 'min-h-[88px]'} resize-y leading-relaxed whitespace-pre-wrap`}
                     placeholder="Type your answer… (Shift+Enter for new line)"
                   />
                 ) : isEmailField ? (
@@ -452,18 +715,36 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
 
                 {/* Confirm / Next button — hidden for chip fields (auto-confirms on tap) */}
                 {!choices && (
-                <div className="flex items-center justify-end gap-2">
-                  {isOptional && !displayValue && (
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingIndex(Math.max(0, index - 1))}
+                    disabled={index === 0}
+                    className="inline-flex items-center gap-1.5 h-8 text-[13px] font-medium text-ink-muted-80 hover:text-primary rounded-full px-3 transition-colors cursor-pointer disabled:opacity-30 disabled:pointer-events-none border border-transparent hover:border-primary/20 bg-transparent"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back
+                  </button>
+                  <div className="flex items-center justify-end gap-2">
+                  {intent === 'send_email' && key === 'subject' && isDraftingBody && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-primary font-medium">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Drafting body
+                    </span>
+                  )}
+                  {isOptional && !hasFieldValue && (
                     <span className="text-[11px] text-ink-muted-48">Optional</span>
                   )}
                   <button
                     onClick={() => confirmBlock(key)}
-                    disabled={!displayValue && !isOptional}
+                    disabled={!hasFieldValue && !isOptional}
                     className="inline-flex items-center gap-1.5 h-8 text-[13px] font-medium bg-primary hover:bg-primary-focus text-white rounded-full px-4 transition-all duration-200 active:scale-[0.96] cursor-pointer disabled:opacity-40 disabled:pointer-events-none border-none"
                   >
-                    {isOptional && !displayValue ? 'Skip' : 'Next'} <ArrowRight className="w-3.5 h-3.5" />
+                    {isAllConfirmed || index < keys.length - 1 ? (isOptional && !hasFieldValue ? 'Skip' : 'Next') : 'Done'} <ArrowRight className="w-3.5 h-3.5" />
                   </button>
+                  </div>
                 </div>
+                )}
+                {intent === 'send_email' && key === 'body' && draftError && (
+                  <p className="text-[12px] text-red-500 leading-snug">{draftError}</p>
                 )}
               </div>
             )}

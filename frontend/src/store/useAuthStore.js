@@ -1,6 +1,43 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+const intentTitles = {
+  send_email: 'Compose Email',
+  do_format: 'Format Document',
+  execute_summary: 'Generate Summary',
+  summarize_slides: 'Summarize Slides',
+  data_analysis: 'Analyze Data',
+  generate_docs: 'Create Document',
+  schedule_event: 'Schedule Event',
+};
+
+const deriveSessionTitle = (message) => {
+  if (message.sessionTitle) return message.sessionTitle;
+  const text = message.text || '';
+
+  const intentMatch = text.match(/```json\s*([\s\S]*?)\s*```/i);
+  if (intentMatch) {
+    try {
+      const parsed = JSON.parse(intentMatch[1]);
+      if (parsed?.intent) return intentTitles[parsed.intent] || parsed.intent.replace(/_/g, ' ');
+    } catch {
+      // Fall through to text-based title.
+    }
+  }
+
+  const executingMatch = text.match(/^Executing action:\s*(.+?)\.\.\.$/i);
+  if (executingMatch) {
+    const intent = executingMatch[1].trim().replace(/\s+/g, '_');
+    return intentTitles[intent] || executingMatch[1].trim();
+  }
+
+  if (message.isUser && text.trim()) {
+    return text.trim().slice(0, 30) + (text.trim().length > 30 ? '...' : '');
+  }
+
+  return '';
+};
+
 export const useAuthStore = create(
   persist(
     (set) => ({
@@ -50,8 +87,8 @@ export const useAuthStore = create(
         newSessions = newSessions.map((s) => {
           if (s.id === activeId) {
             let title = s.title;
-            if (s.messages.length === 0 && message.isUser) {
-              title = message.text.slice(0, 30) + (message.text.length > 30 ? "..." : "");
+            if (!title || title === "New Chat") {
+              title = deriveSessionTitle(message) || title || "New Chat";
             }
             return {
               ...s,
