@@ -148,6 +148,54 @@ const naturalExamples = {
   generate_docs: 'Create a detailed project proposal for the hackathon demo in a professional tone.',
 };
 
+const naturalIntakeCopy = {
+  send_email: {
+    heading: 'Describe the email you want to send',
+    helper: 'Include the recipient, purpose, tone, and any key points. Agent47 will draft the editable email fields for review.',
+    placeholder: 'Example: Email nina@example.com a friendly update that the Q2 deck is ready for review.',
+  },
+  do_format: {
+    heading: 'Paste or describe what needs cleaning up',
+    helper: 'Share messy notes, a Doc link, or the format you want. Agent47 will prepare the document details.',
+    placeholder: 'Example: Turn my meeting notes into a clean professional memo with action items.',
+  },
+  execute_summary: {
+    heading: 'Tell Agent47 what to summarize',
+    helper: 'Add a Google Doc link, preferred length, and anything specific to focus on.',
+    placeholder: 'Example: Summarize this Google Doc into 5 bullets focused on action items.',
+  },
+  summarize_slides: {
+    heading: 'Tell Agent47 which deck to summarize',
+    helper: 'Add a Slides link or describe the summary style you need, such as key takeaways or slide-by-slide.',
+    placeholder: 'Example: Summarize this Slides deck as key takeaways for leadership.',
+  },
+  data_analysis: {
+    heading: 'Ask a question about your spreadsheet',
+    helper: 'Add a Sheets link and the analysis you want. Agent47 will turn it into the right data request.',
+    placeholder: 'Example: Analyze this budget sheet and find the top spending categories.',
+  },
+  generate_docs: {
+    heading: 'Describe the document you want created',
+    helper: 'Include the title, document type, depth, tone, and any sections you want covered.',
+    placeholder: 'Example: Create a detailed project proposal for the hackathon demo in a professional tone.',
+  },
+  schedule_event: {
+    heading: 'Describe the event you want scheduled',
+    helper: 'Include the title, date, time, duration, guests, and whether you want Google Meet.',
+    placeholder: 'Example: Schedule a 30 minute planning sync tomorrow at 10am with alex@example.com and add Google Meet.',
+  },
+};
+
+const naturalActionLabels = {
+  send_email: 'Prepare my email',
+  do_format: 'Clean this up',
+  execute_summary: 'Summarize this doc',
+  summarize_slides: 'Summarize this deck',
+  data_analysis: 'Analyze my data',
+  generate_docs: 'Create my document',
+  schedule_event: 'Prepare my event',
+};
+
 export function IntentBlockRenderer({ intentData, onExecute }) {
   const { intent, payload } = intentData;
   const initialPayload = typeof payload === 'object' && payload !== null ? payload : {};
@@ -364,6 +412,11 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
   }, [activeIndex, intent, formData.subject]);
 
   const IntentIcon = intentIcons[intent] || FileText;
+  const intakeCopy = naturalIntakeCopy[intent] || {
+    heading: 'Tell Agent47 what you want done',
+    helper: 'Describe the action in one clear sentence. Agent47 will fill the details it understands.',
+    placeholder: 'Type one natural-language instruction...',
+  };
   const progress = Math.round((activeIndex / keys.length) * 100);
   const filePickerConfig = {
     source_doc_link: {
@@ -840,17 +893,21 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
         </div>
       </div>
 
-      <div className={`mb-4 rounded-[14px] border p-3.5 transition-colors ${showBlocks ? 'border-hairline bg-canvas-parchment/45' : 'border-primary/20 bg-primary/5'}`}>
-        <div className="flex items-start gap-2.5">
-          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-canvas text-primary border border-primary/15">
-            <IntentIcon className="h-3.5 w-3.5" />
-          </div>
-          <div className="min-w-0 flex-1 space-y-2.5">
-            <div>
-              <p className="text-[13px] font-semibold text-ink leading-snug">Tell Agent47 what you want done</p>
-              <p className="text-[12px] text-ink-muted-80 leading-snug mt-0.5">
-                Example: {naturalExamples[intent] || 'Describe the action in one clear sentence.'}
-              </p>
+      <div className={`mb-4 rounded-[14px] border p-4 transition-colors ${showBlocks ? 'border-hairline bg-canvas-parchment/45' : 'border-primary/20 bg-primary/5'}`}>
+        <div className="min-w-0 space-y-3.5">
+            <div className="space-y-2.5">
+              <div className="space-y-1">
+                <p className="text-[16px] font-semibold text-ink leading-snug tracking-[-0.01em] font-display">{intakeCopy.heading}</p>
+                <p className="text-[13px] text-ink-muted-80 leading-relaxed">
+                  {intakeCopy.helper}
+                </p>
+              </div>
+              <div className="rounded-[10px] border border-hairline bg-canvas/70 px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-ink-muted-48 mb-1">Example</p>
+                <p className="text-[13px] text-ink-muted-80 leading-snug">
+                  {naturalExamples[intent] || intakeCopy.placeholder}
+                </p>
+              </div>
             </div>
             <textarea
               value={naturalText}
@@ -861,31 +918,24 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
                   parseNaturalLanguage();
                 }
               }}
-              className="w-full min-h-[74px] resize-y rounded-[10px] border border-hairline bg-surface-pearl px-3.5 py-2.5 text-[14px] text-ink leading-relaxed placeholder:text-ink-muted-48 focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/8"
-              placeholder="Type one natural-language instruction..."
+              className={`w-full rounded-[12px] border border-hairline bg-surface-pearl px-3.5 py-3.5 text-[14px] text-ink leading-relaxed placeholder:text-ink-muted-48 focus:outline-none focus:border-primary/45 focus:ring-2 focus:ring-primary/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] ${intent === 'send_email' ? 'min-h-[116px] resize-none' : 'min-h-[86px] resize-y'}`}
+              placeholder=""
               disabled={isParsingIntent}
             />
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => setShowBlocks(true)}
-                className="text-[12px] font-medium text-ink-muted-80 hover:text-primary bg-transparent border-none cursor-pointer px-0"
-              >
-                Fill blocks manually
-              </button>
+              <span className="text-[11px] text-ink-muted-48 leading-snug">Agent47 will fill what it understands. You can review every field next.</span>
               <button
                 type="button"
                 onClick={parseNaturalLanguage}
                 disabled={!naturalText.trim() || isParsingIntent}
-                className="inline-flex items-center gap-1.5 h-8 rounded-full bg-primary px-4 text-[13px] font-semibold text-white hover:bg-primary-focus disabled:opacity-40 disabled:pointer-events-none border-none cursor-pointer"
+                className="inline-flex items-center gap-1.5 h-9 rounded-full bg-primary px-4 text-[13px] font-semibold text-white hover:bg-primary-focus disabled:opacity-40 disabled:pointer-events-none border-none cursor-pointer shadow-[0_2px_8px_rgba(0,102,204,0.18)]"
               >
                 {isParsingIntent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-                Fill blocks with AI
+                {naturalActionLabels[intent] || 'Prepare this action'}
               </button>
             </div>
             {parseError && <p className="text-[12px] text-red-500 leading-snug">{parseError}</p>}
             {parseNote && <p className="text-[12px] text-primary leading-snug">{parseNote}</p>}
-          </div>
         </div>
       </div>
 
