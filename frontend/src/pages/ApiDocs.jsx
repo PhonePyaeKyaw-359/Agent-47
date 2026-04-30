@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, BookOpen, CircleDot, ExternalLink, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, BookOpen, CircleDot, ExternalLink, ShieldCheck } from 'lucide-react';
 
 const routes = [
   {
@@ -65,7 +65,7 @@ export default function ApiDocs() {
       <main className="mx-auto max-w-6xl px-6 pb-24 pt-16 relative z-10">
         <section className="max-w-3xl mb-12 animate-fade-in-up">
           <div className="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/5 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-accent">
-            <Sparkles className="h-4 w-4" /> API Reference
+            <BookOpen className="h-4 w-4" /> API Reference
           </div>
           <h1 className="mt-6 text-5xl md:text-7xl font-bold tracking-tighter leading-tight font-display">
             Read the routes before you jump to the backend docs.

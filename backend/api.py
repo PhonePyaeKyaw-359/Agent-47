@@ -14,6 +14,7 @@ import uuid
 import json
 import re
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -156,7 +157,11 @@ async def _call_workspace_tool(
     try:
         parsed = json.loads(text)
         if isinstance(parsed, dict) and parsed.get("error"):
-            raise RuntimeError(parsed["error"])
+            details = parsed.get("details") or parsed.get("help")
+            message = parsed["error"]
+            if details:
+                message = f"{message}: {details}"
+            raise RuntimeError(message)
     except json.JSONDecodeError:
         pass
     return text
@@ -456,6 +461,167 @@ Document text:
     return {
         "result": summary or "I could read the document, but could not generate a summary.",
         "document_id": document_id,
+    }
+
+
+async def _execute_generate_document(user_id: str, tokens: dict, payload: dict) -> dict:
+    title = (payload.get("title") or "Untitled Document").strip()
+    content_type = (payload.get("content_type") or "Document").strip()
+    outline = (payload.get("outline") or "").strip()
+    depth = (payload.get("content_depth") or "Detailed").strip()
+    tone = (payload.get("tone") or "Professional").strip()
+
+    if not title:
+        raise HTTPException(status_code=400, detail="Provide a document title before creating it.")
+
+    plan_source = (
+        f"Create a {depth.lower()} {content_type.lower()} titled {title}. "
+        f"Tone: {tone}. User outline/request: {outline or 'Create a useful structured document.'}"
+    )
+    plan = await _build_document_plan(plan_source, content_type, tone)
+    plan["title"] = title
+    content, formats = _compose_doc_content_and_formats(plan)
+
+    create_text = await _call_workspace_tool(
+        user_id,
+        tokens,
+        "docs.create",
+        {"title": title, "content": content},
+    )
+    created = json.loads(create_text)
+    document_id = created["documentId"]
+
+    if formats:
+        await _call_workspace_tool(
+            user_id,
+            tokens,
+            "docs.formatText",
+            {"documentId": document_id, "formats": formats},
+        )
+
+    url = f"https://docs.google.com/document/d/{document_id}/edit"
+    return {
+        "result": f'Created "{title}": [Open in Google Docs]({url})',
+        "document_id": document_id,
+        "title": title,
+        "url": url,
+        "format_count": len(formats),
+    }
+
+
+async def _execute_schedule_event(user_id: str, tokens: dict, payload: dict) -> dict:
+    title = (payload.get("title") or "").strip()
+    date_text = (payload.get("date") or "").strip()
+    start_time = (payload.get("start_time") or "").strip()
+    duration = (payload.get("duration") or "1 hour").strip()
+    description = (payload.get("description") or "").strip()
+    attendees = (payload.get("attendees") or "").strip()
+    add_meet = str(payload.get("add_google_meet") or "").strip().lower() in {
+        "yes",
+        "true",
+        "1",
+        "add",
+    }
+
+    if not title or not date_text or not start_time:
+        raise HTTPException(
+            status_code=400,
+            detail="Title, date, and start time are required to schedule an event.",
+        )
+
+    from google import genai
+
+    _validate_llm_environment()
+    use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if use_vertex:
+        client = genai.Client(
+            vertexai=True,
+            project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+            location=os.getenv("GOOGLE_CLOUD_LOCATION"),
+        )
+    else:
+        client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+
+    timezone_offset = os.getenv("USER_TIMEZONE_OFFSET", "+07:00")
+    prompt = f"""
+Convert this event request into strict JSON for Google Calendar.
+Current local date: {datetime.now().date().isoformat()}
+Timezone offset: {timezone_offset}
+
+Return ONLY JSON:
+{{
+  "start": "YYYY-MM-DDTHH:MM:SS+07:00",
+  "end": "YYYY-MM-DDTHH:MM:SS+07:00"
+}}
+
+Event date: {date_text}
+Start time: {start_time}
+Duration: {duration}
+""".strip()
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config={"response_mime_type": "application/json"},
+    )
+    parsed = json.loads(response.text or "{}")
+    start_iso = parsed.get("start")
+    end_iso = parsed.get("end")
+    if not start_iso or not end_iso:
+        raise RuntimeError("Could not parse event date/time.")
+
+    def normalize_datetime(value: str) -> str:
+        value = str(value).strip()
+        if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$", value):
+            return re.sub(r"(\d{2}:\d{2})(Z|[+-]\d{2}:\d{2})$", r"\1:00\2", value)
+        if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$", value):
+            return f"{value}:00{timezone_offset}"
+        if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$", value):
+            return f"{value}{timezone_offset}"
+        return value
+
+    start_iso = normalize_datetime(start_iso)
+    end_iso = normalize_datetime(end_iso)
+
+    attendee_emails = re.findall(
+        r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+        attendees,
+    )
+
+    event_args = {
+        "calendarId": "primary",
+        "summary": title,
+        "description": description,
+        "start": {"dateTime": start_iso},
+        "end": {"dateTime": end_iso},
+        "addGoogleMeet": add_meet,
+    }
+    if attendee_emails:
+        event_args["attendees"] = attendee_emails
+
+    result_text = await _call_workspace_tool(
+        user_id,
+        tokens,
+        "calendar.createEvent",
+        event_args,
+    )
+    event = json.loads(result_text)
+    event_id = event.get("id")
+    html_link = event.get("htmlLink", "")
+    meet_link = event.get("hangoutLink", "")
+    pieces = [f'Scheduled "{event.get("summary", title)}" for {start_iso}.']
+    if html_link:
+        pieces.append(f"[Open in Google Calendar]({html_link})")
+    if meet_link:
+        pieces.append(f"[Google Meet]({meet_link})")
+    return {
+        "result": " ".join(pieces),
+        "event_id": event_id,
+        "url": html_link,
+        "meet_url": meet_link,
     }
 
 
@@ -898,6 +1064,7 @@ async def run(request: RunRequest):
     # Apply the user's timezone so get_current_time() returns the correct local time
     if request.timezone_offset:
         set_user_timezone(request.timezone_offset)
+        os.environ["USER_TIMEZONE_OFFSET"] = request.timezone_offset
 
     # ── 1. Check / refresh tokens ───────────────────────────────────
     tokens = get_user_tokens(user_id)
@@ -1042,6 +1209,17 @@ async def list_google_docs(
     page_size: int = 20,
 ):
     """List Google Docs the user can access for picker UI fields."""
+    return await list_google_files(user_id, "document", query, page_size)
+
+
+@app.get("/api/google-files")
+async def list_google_files(
+    user_id: str = "default_user",
+    file_type: str = "document",
+    query: str = "",
+    page_size: int = 20,
+):
+    """List Google Workspace files the user can access for picker UI fields."""
     tokens = get_user_tokens(user_id)
     if tokens is None:
         raise HTTPException(status_code=401, detail="Unauthenticated")
@@ -1051,8 +1229,26 @@ async def list_google_docs(
     except Exception as exc:
         raise HTTPException(status_code=401, detail=str(exc))
 
+    file_configs = {
+        "document": {
+            "mime": "application/vnd.google-apps.document",
+            "url": "https://docs.google.com/document/d/{id}/edit",
+        },
+        "spreadsheet": {
+            "mime": "application/vnd.google-apps.spreadsheet",
+            "url": "https://docs.google.com/spreadsheets/d/{id}/edit",
+        },
+        "presentation": {
+            "mime": "application/vnd.google-apps.presentation",
+            "url": "https://docs.google.com/presentation/d/{id}/edit",
+        },
+    }
+    config = file_configs.get(file_type)
+    if not config:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
+
     safe_query = query.replace("\\", "\\\\").replace("'", "\\'")
-    drive_query = "mimeType='application/vnd.google-apps.document' and trashed=false"
+    drive_query = f"mimeType='{config['mime']}' and trashed=false"
     if safe_query.strip():
         drive_query += f" and name contains '{safe_query.strip()}'"
 
@@ -1080,10 +1276,10 @@ async def list_google_docs(
                     "id": file_id,
                     "name": file.get("name") or "Untitled document",
                     "modifiedTime": file.get("modifiedTime"),
-                    "url": f"https://docs.google.com/document/d/{file_id}/edit",
+                    "url": config["url"].format(id=file_id),
                 }
             )
-        return {"docs": docs}
+        return {"files": docs, "docs": docs}
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -1160,6 +1356,28 @@ async def execute_action(request: ExecuteActionRequest):
             raise HTTPException(
                 status_code=500,
                 detail=f"Document summary failed: {str(exc)}",
+            )
+
+    if intent == "generate_docs":
+        try:
+            return await _execute_generate_document(user_id, tokens, payload)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Document creation failed: {str(exc)}",
+            )
+
+    if intent == "schedule_event":
+        try:
+            return await _execute_schedule_event(user_id, tokens, payload)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Event scheduling failed: {str(exc)}",
             )
             
     # 2. Constrained AI Path (For generation/analysis intents)
