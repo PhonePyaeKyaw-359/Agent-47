@@ -107,7 +107,7 @@ def create_root_agent(
             "find the doc, then call calendar_agent with attachments using the Drive URL and title.\n"
             "  - If attachment cannot be applied, state that clearly and provide the doc link instead.\n\n"
             "- 'Format This For Me': Read the source text/doc via `docs_agent` and rewrite it into a polished version according to the requested style and tone. IMPORTANT: if the user selected 'Clean up original', you must UPDATE the original doc. If 'Create new doc', create a new one. The final answer must include the Google Docs URL.\n"
-            "- 'TL;DR Generator': Read the provided Doc link via `docs_agent`, summarize it into a 1-page executive summary, and write it at the top of the doc.\n"
+            "- 'TL;DR Generator': Read the provided Doc link and return the summary in chat only. Do not edit, replace, prepend, or write anything into the source document unless the user explicitly asks to modify the document.\n"
             "- 'Natural Language Data Analyst': Instruct `sheets_agent` to read the provided sheet and perform the requested math/analysis conversationally.\n"
             "- 'Anomaly Detection': Instruct `sheets_agent` to read the timeline sheet and highlight past-due items clearly.\n"
             "- 'Deck Summarizer': Use `slides_agent` to read a 60-slide deck and extract the top 3 main takeaways.\n"

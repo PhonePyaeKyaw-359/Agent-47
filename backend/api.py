@@ -398,6 +398,67 @@ async def _execute_format_document(user_id: str, tokens: dict, payload: dict) ->
     }
 
 
+async def _execute_doc_summary(user_id: str, tokens: dict, payload: dict) -> dict:
+    source_doc = (payload.get("source_doc_link") or "").strip()
+    length = (payload.get("length") or "5 bullets").strip()
+    focus = (payload.get("focus") or "").strip()
+    document_id = _extract_document_id(source_doc)
+
+    if not document_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Select a Google Doc or paste a valid Google Doc link before summarizing.",
+        )
+
+    doc_text = _parse_docs_text(
+        await _call_workspace_tool(
+            user_id,
+            tokens,
+            "docs.getText",
+            {"documentId": document_id},
+        )
+    )
+    if not doc_text:
+        raise HTTPException(status_code=400, detail="The selected Google Doc has no readable text.")
+
+    from google import genai
+
+    _validate_llm_environment()
+    use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if use_vertex:
+        client = genai.Client(
+            vertexai=True,
+            project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+            location=os.getenv("GOOGLE_CLOUD_LOCATION"),
+        )
+    else:
+        client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+
+    prompt = f"""
+Summarize this Google Doc for the user. Return the summary in chat only.
+Do not modify the document. Do not mention inability to edit because editing is not requested.
+
+Requested length: {length}
+Focus: {focus or "General summary"}
+
+Document text:
+{doc_text}
+""".strip()
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+    )
+    summary = (response.text or "").strip()
+    return {
+        "result": summary or "I could read the document, but could not generate a summary.",
+        "document_id": document_id,
+    }
+
+
 def _get_runner(user_id: str, tokens: Optional[dict] = None) -> Runner:
     """Return (or create) a Runner bound to the per-user agent tree."""
     if user_id not in _user_runners:
@@ -973,6 +1034,63 @@ class ExecuteActionRequest(BaseModel):
     session_id: str = ""
     user_id: str = "default_user"
 
+
+@app.get("/api/google-docs")
+async def list_google_docs(
+    user_id: str = "default_user",
+    query: str = "",
+    page_size: int = 20,
+):
+    """List Google Docs the user can access for picker UI fields."""
+    tokens = get_user_tokens(user_id)
+    if tokens is None:
+        raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    try:
+        tokens = refresh_tokens_if_needed(user_id) or tokens
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+
+    safe_query = query.replace("\\", "\\\\").replace("'", "\\'")
+    drive_query = "mimeType='application/vnd.google-apps.document' and trashed=false"
+    if safe_query.strip():
+        drive_query += f" and name contains '{safe_query.strip()}'"
+
+    try:
+        result_text = await _call_workspace_tool(
+            user_id,
+            tokens,
+            "drive.search",
+            {
+                "query": drive_query,
+                "pageSize": max(1, min(page_size, 50)),
+            },
+        )
+        parsed = json.loads(result_text)
+        files = parsed.get("files", parsed) if isinstance(parsed, dict) else parsed
+        docs = []
+        for file in files or []:
+            if not isinstance(file, dict):
+                continue
+            file_id = file.get("id")
+            if not file_id:
+                continue
+            docs.append(
+                {
+                    "id": file_id,
+                    "name": file.get("name") or "Untitled document",
+                    "modifiedTime": file.get("modifiedTime"),
+                    "url": f"https://docs.google.com/document/d/{file_id}/edit",
+                }
+            )
+        return {"docs": docs}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list Google Docs: {str(exc)}",
+        )
+
+
 @app.post("/api/execute-action")
 async def execute_action(request: ExecuteActionRequest):
     """
@@ -1031,6 +1149,17 @@ async def execute_action(request: ExecuteActionRequest):
             raise HTTPException(
                 status_code=500,
                 detail=f"Document formatting failed: {str(exc)}",
+            )
+
+    if intent == "execute_summary":
+        try:
+            return await _execute_doc_summary(user_id, tokens, payload)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Document summary failed: {str(exc)}",
             )
             
     # 2. Constrained AI Path (For generation/analysis intents)

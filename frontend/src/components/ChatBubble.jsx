@@ -17,10 +17,10 @@ const mdComponents = {
       {children}
     </a>
   ),
-  p: ({ children }) => <p className="mb-3 last:mb-0 leading-[1.53] text-[15px] tracking-[-0.01em]">{children}</p>,
-  ul: ({ children }) => <ul className="list-disc pl-5 mb-4 space-y-1.5 text-[15px] tracking-[-0.01em] leading-[1.53]">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal pl-5 mb-4 space-y-1.5 text-[15px] tracking-[-0.01em] leading-[1.53]">{children}</ol>,
-  li: ({ children }) => <li className="leading-[1.53] pl-1 tracking-[-0.01em]">{children}</li>,
+  p: ({ children }) => <p className="mb-3.5 last:mb-0 leading-[1.62] text-[15px] tracking-[-0.01em] text-ink">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc pl-5 mb-4 space-y-2 text-[15px] tracking-[-0.01em] leading-[1.6] text-ink">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-5 mb-4 space-y-2 text-[15px] tracking-[-0.01em] leading-[1.6] text-ink">{children}</ol>,
+  li: ({ children }) => <li className="leading-[1.6] pl-1 tracking-[-0.01em]">{children}</li>,
   strong: ({ children }) => <strong className="font-semibold text-ink">{children}</strong>,
   em: ({ children }) => <em className="italic opacity-90">{children}</em>,
   code: ({ inline, children }) =>
@@ -151,6 +151,44 @@ function ActionResultCard({ humanText }) {
   );
 }
 
+function SummaryBuddyIcon() {
+  return (
+    <svg
+      viewBox="0 0 28 28"
+      className="w-[18px] h-[18px] drop-shadow-sm"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id="summaryBuddyPaper" x1="7" y1="3" x2="22" y2="25" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#FFFFFF" />
+          <stop offset="1" stopColor="#DDEBFF" />
+        </linearGradient>
+        <linearGradient id="summaryBuddyFold" x1="18" y1="4" x2="24" y2="10" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#BBD7FF" />
+          <stop offset="1" stopColor="#6EA8FF" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M7.4 3.6h10.2l5.1 5.1v15.1c0 1-.8 1.8-1.8 1.8H7.4c-1 0-1.8-.8-1.8-1.8V5.4c0-1 .8-1.8 1.8-1.8Z"
+        fill="url(#summaryBuddyPaper)"
+        stroke="#7AAEF7"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M17.6 3.9v4.3c0 .6.5 1.1 1.1 1.1H23"
+        fill="url(#summaryBuddyFold)"
+        stroke="#7AAEF7"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+      <path d="M10.1 16.6c.8 1.1 2.1 1.7 3.9 1.7s3.1-.6 3.9-1.7" fill="none" stroke="#1D4F91" strokeWidth="1.3" strokeLinecap="round" />
+      <circle cx="11.2" cy="13.2" r="1.1" fill="#1D4F91" />
+      <circle cx="16.8" cy="13.2" r="1.1" fill="#1D4F91" />
+      <path d="M9.5 21.5h9" stroke="#9BBCEB" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function ChatBubble({ message, isUser, isError, steps, onExecuteIntent }) {
   let parsedMessage = message;
   const intents = [];
@@ -182,6 +220,7 @@ export function ChatBubble({ message, isUser, isError, steps, onExecuteIntent })
   const hasTextContent = hasActionResult
     ? false  // the card handles the text
     : parsedMessage && parsedMessage.trim().length > 0;
+  const isLongAssistantText = !isUser && hasTextContent && parsedMessage.trim().length > 220;
 
   return (
     <div className={cn(
@@ -191,24 +230,24 @@ export function ChatBubble({ message, isUser, isError, steps, onExecuteIntent })
       {/* ── Main bubble row ─────────────────────────────────────── */}
       {(hasTextContent || hasActionResult || isUser) && (
         <div className={cn(
-          "flex w-full items-end",
+          "flex w-full",
           isUser ? "justify-end" : "justify-start"
         )}>
           {/* AI Avatar */}
           {!isUser && (
-            <div className="flex-shrink-0 h-7 w-7 rounded-full bg-canvas-parchment flex items-center justify-center mr-2.5 mb-1 border border-hairline">
-              <Bot className="h-[15px] w-[15px] text-ink-muted-80" />
+            <div className="flex-shrink-0 h-8 w-8 rounded-[10px] bg-canvas-parchment flex items-center justify-center mr-3 mt-1 border border-hairline">
+              <Bot className="h-[16px] w-[16px] text-ink-muted-80" />
             </div>
           )}
 
           {/* Bubble */}
           <div className={cn(
-            "max-w-[82%] md:max-w-[72%] text-[15px] font-normal tracking-[-0.01em] leading-[1.53]",
+            "max-w-[88%] md:max-w-[680px] text-[15px] font-normal tracking-[-0.01em] leading-[1.6]",
             isUser
-              ? "bg-primary text-white rounded-[20px] rounded-br-[6px] px-4.5 py-3 shadow-sm ml-auto"
+              ? "bg-primary text-white rounded-[20px] rounded-br-[6px] px-4.5 py-3 shadow-sm ml-auto self-end"
               : isError
                 ? "bg-red-50 text-red-700 border border-red-200/60 rounded-[20px] rounded-bl-[6px] px-4.5 py-3"
-                : "text-ink py-1 px-0"
+                : "bg-surface-pearl border border-hairline rounded-[18px] rounded-tl-[6px] px-4.5 py-4 shadow-[0_1px_10px_rgba(0,0,0,0.035)] text-ink"
           )}>
             {isUser ? (
               <span className="whitespace-pre-wrap leading-[1.53]">{message}</span>
@@ -219,6 +258,14 @@ export function ChatBubble({ message, isUser, isError, steps, onExecuteIntent })
               </>
             ) : (
               <>
+                {isLongAssistantText && (
+                  <div className="flex items-center gap-2 mb-3 pb-2.5 border-b border-hairline">
+                    <div className="h-6 w-6 rounded-[8px] bg-primary/8 text-primary flex items-center justify-center shrink-0">
+                      <SummaryBuddyIcon />
+                    </div>
+                    <span className="text-[13px] font-semibold text-ink tracking-[-0.01em]">Summary</span>
+                  </div>
+                )}
                 <AgentSteps steps={steps} />
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
                   {parsedMessage}

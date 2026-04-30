@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { Check, Edit2, Sparkles, ArrowRight, History, Mail, FileText, Search, BarChart3, FilePlus, Send } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Check, Edit2, Sparkles, ArrowRight, History, Mail, FileText, Search, BarChart3, FilePlus, Send, RefreshCw } from 'lucide-react';
+import { chatService } from '../services/api';
+import { useAuthStore } from '../store/useAuthStore';
 
 // --- Email Caching Utilities ---
 const getCachedEmails = () => {
@@ -106,6 +108,11 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
 
   const [formData, setFormData] = useState(initialPayload);
   const [focusedField, setFocusedField] = useState(null);
+  const [docQuery, setDocQuery] = useState('');
+  const [docOptions, setDocOptions] = useState([]);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [docError, setDocError] = useState('');
+  const userId = useAuthStore((s) => s.userId);
 
   const [blockStatus, setBlockStatus] = useState(() => {
     const s = {};
@@ -140,6 +147,29 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
 
   const IntentIcon = intentIcons[intent] || Sparkles;
   const progress = Math.round((activeIndex / keys.length) * 100);
+  const docPickerFields = new Set(['source_doc_link', 'text_or_doc_link']);
+
+  const loadDocs = async (query = '') => {
+    if (!userId) return;
+    setIsLoadingDocs(true);
+    setDocError('');
+    try {
+      const data = await chatService.listGoogleDocs(userId, query);
+      setDocOptions(data.docs || []);
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      setDocError(typeof detail === 'string' ? detail : detail?.message || 'Could not load Google Docs.');
+    } finally {
+      setIsLoadingDocs(false);
+    }
+  };
+
+  useEffect(() => {
+    const activeKey = keys[activeIndex];
+    if (!docPickerFields.has(activeKey)) return;
+    const timeout = setTimeout(() => loadDocs(docQuery), 250);
+    return () => clearTimeout(timeout);
+  }, [activeIndex, docQuery, userId]);
 
   const renderBlock = (key, index) => {
     if (index > activeIndex) return null;
@@ -149,6 +179,7 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
     const isConfirmed = status === 'confirmed';
 
     const isTextArea = key === 'body' || key === 'outline' || key === 'nl_queries' || key === 'text_or_doc_link';
+    const isDocPickerField = docPickerFields.has(key);
     const isEmailField = key === 'to' || key === 'cc' || key === 'sender';
     const choices = fieldChoices[key] || null;
     const isOptional = optionalFields.has(key);
@@ -251,7 +282,62 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
                 </p>
 
                 {/* Input */}
-                {choices ? (
+                {isDocPickerField ? (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={docQuery}
+                        onChange={(e) => setDocQuery(e.target.value)}
+                        className={inputClasses}
+                        placeholder="Search your Google Docs…"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => loadDocs(docQuery)}
+                        className="h-10 w-10 rounded-[10px] border border-hairline bg-surface-pearl text-ink-muted-80 hover:text-primary hover:border-primary/40 flex items-center justify-center transition-colors"
+                        title="Refresh Google Docs"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${isLoadingDocs ? 'animate-spin' : ''}`} />
+                      </button>
+                    </div>
+
+                    {docError && <p className="text-[12px] text-red-500 leading-snug">{docError}</p>}
+
+                    <div className="max-h-48 overflow-y-auto rounded-[10px] border border-hairline bg-surface-pearl divide-y divide-hairline">
+                      {docOptions.map(doc => (
+                        <button
+                          key={doc.id}
+                          type="button"
+                          onClick={() => {
+                            handleChange(key, doc.url);
+                            setTimeout(() => confirmBlock(key), 100);
+                          }}
+                          className="w-full text-left px-3 py-2.5 bg-transparent hover:bg-primary/5 transition-colors cursor-pointer"
+                        >
+                          <div className="text-[13px] font-medium text-ink truncate">{doc.name}</div>
+                          <div className="text-[11px] text-ink-muted-48 truncate">
+                            {doc.modifiedTime ? `Modified ${new Date(doc.modifiedTime).toLocaleDateString()}` : doc.url}
+                          </div>
+                        </button>
+                      ))}
+                      {!isLoadingDocs && docOptions.length === 0 && (
+                        <div className="px-3 py-3 text-[12px] text-ink-muted-48">
+                          No Google Docs found. You can paste a link or text below.
+                        </div>
+                      )}
+                    </div>
+
+                    <textarea
+                      value={displayValue || ''}
+                      onChange={handleChangeAdapter}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); confirmBlock(key); } }}
+                      className={`${inputClasses} min-h-[72px] resize-y leading-relaxed`}
+                      placeholder={key === 'text_or_doc_link' ? 'Or paste messy text / Doc link…' : 'Or paste a Google Doc link…'}
+                    />
+                  </div>
+                ) : choices ? (
                   /* ── Chip selector ─────────────────────────── */
                   <div className="flex flex-wrap gap-2">
                     {choices.map(option => {

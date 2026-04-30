@@ -52,6 +52,17 @@ export const chatService = {
       session_id: sessionId,
     });
     return response.data;
+  },
+
+  listGoogleDocs: async (userId, query = "") => {
+    const response = await api.get(`/api/google-docs`, {
+      params: {
+        user_id: userId,
+        query,
+        page_size: 20,
+      },
+    });
+    return response.data;
   }
 };
 
