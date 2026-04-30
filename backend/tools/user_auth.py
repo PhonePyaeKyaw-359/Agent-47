@@ -4,10 +4,6 @@ import os
 from typing import Optional
 from urllib.parse import quote
 import httpx
-import requests
-
-from google_auth_oauthlib.flow import Flow
-from google.oauth2.credentials import Credentials
 
 DEFAULT_SCOPES = [
     "https://www.googleapis.com/auth/calendar",
@@ -29,7 +25,6 @@ DEFAULT_SCOPES = [
 
 TOKEN_FILE = ".tokens.json"
 
-# Helper to find any client_secret.json file
 def _find_client_secret():
     candidates = ["new_secret.json", "agent_gworkspace_client_secret.json", "client_secret.json"]
     for c in candidates:
@@ -154,7 +149,6 @@ def refresh_tokens_if_needed(user_id: str) -> Optional[dict]:
     import time
     expiry = tokens.get("expiry_date", 0) / 1000
     
-    # If expiring in next 5 minutes
     if time.time() > (expiry - 300):
         if not tokens.get("refresh_token"):
             raise ValueError("Token expired and no refresh token available")

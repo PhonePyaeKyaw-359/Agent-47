@@ -42,6 +42,16 @@ export const chatService = {
       timezone_offset: timezoneOffset,
     });
     return response.data;
+  },
+
+  executeAction: async (userId, intentData, sessionId = "") => {
+    const response = await api.post(`/api/execute-action`, {
+      user_id: userId,
+      intent: intentData.intent,
+      payload: intentData.payload,
+      session_id: sessionId,
+    });
+    return response.data;
   }
 };
 

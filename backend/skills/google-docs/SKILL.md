@@ -47,6 +47,7 @@ Then:
 | `strikethrough` | ~~Strikethrough text~~          | updateTextStyle      |
 | `code`          | `Monospace font` (Courier New)  | updateTextStyle      |
 | `link`          | Hyperlink (requires `url`)      | updateTextStyle      |
+| `bullet`        | Bulleted paragraph/list item    | createParagraphBullets |
 | `heading1`      | Heading 1                       | updateParagraphStyle |
 | `heading2`      | Heading 2                       | updateParagraphStyle |
 | `heading3`      | Heading 3                       | updateParagraphStyle |

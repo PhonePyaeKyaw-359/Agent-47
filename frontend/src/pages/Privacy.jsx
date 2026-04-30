@@ -3,14 +3,26 @@ import { Link } from 'react-router-dom';
 
 export default function Privacy() {
   return (
-    <div className="min-h-screen bg-bg-base text-ink-primary font-sans">
-      <nav className="w-full max-w-4xl mx-auto px-6 py-6 flex items-center justify-between border-b border-border">
-        <Link to="/" className="font-semibold text-xl tracking-tight">Agent47</Link>
-        <Link to="/" className="text-sm text-ink-secondary hover:text-ink-primary">Back to Home</Link>
-      </nav>
-      <main className="max-w-3xl mx-auto px-6 py-16">
-        <h1 className="text-4xl font-semibold mb-8 tracking-tight">Privacy Policy</h1>
-        <div className="space-y-6 text-[15px] leading-relaxed text-ink-secondary font-light">
+    <div className="min-h-screen relative bg-bg-base text-ink-primary font-sans overflow-x-hidden">
+      {/* Ambient Light Orbs */}
+      <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-accent/20 rounded-full blur-[120px] pointer-events-none mix-blend-multiply" />
+      <div className="fixed top-[20%] right-[-10%] w-[600px] h-[600px] bg-accent-dim/15 rounded-full blur-[150px] pointer-events-none mix-blend-multiply" />
+      
+      <header className="sticky top-0 z-50 w-full bg-white/60 backdrop-blur-xl border-b border-white/60 shadow-sm">
+        <nav className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
+          <Link to="/" className="flex items-center gap-3 transition-transform hover:scale-105 group">
+            <div className="h-9 w-9 bg-white rounded-[10px] p-0.5 border border-white/80 shadow-sm flex items-center justify-center">
+              <img src="/bot.png" alt="Agent47 Logo" className="h-[90%] w-[90%] object-contain" />
+            </div>
+            <span className="text-xl font-bold tracking-tight text-ink-primary font-display">Agent47</span>
+          </Link>
+          <Link to="/" className="text-sm font-semibold text-ink-secondary hover:text-accent transition-colors">Back to Home</Link>
+        </nav>
+      </header>
+
+      <main className="max-w-3xl mx-auto px-6 py-16 relative z-10 animate-fade-in-up">
+        <h1 className="text-5xl font-bold mb-10 tracking-tighter font-display">Privacy Policy</h1>
+        <div className="space-y-6 text-[16px] leading-relaxed text-ink-secondary font-medium bg-white/60 backdrop-blur-2xl border border-white/60 p-8 rounded-[32px] shadow-sm">
           <p><strong>Last Updated: {new Date().toLocaleDateString()}</strong></p>
           <p>This Privacy Policy explains how Agent47 ("we", "us", or "our") collects, uses, and protects your information when you use our Google Workspace AI orchestration platform.</p>
           

@@ -93,30 +93,35 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-bg-base font-sans">
+    <div className="min-h-screen flex items-center justify-center px-4 bg-bg-base font-sans relative overflow-hidden">
+      {/* Ambient Light Orbs for Futuristic Vibe */}
+      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-accent/20 rounded-full blur-[120px] pointer-events-none mix-blend-multiply" />
+      <div className="absolute top-[20%] right-[-10%] w-[600px] h-[600px] bg-accent-dim/15 rounded-full blur-[150px] pointer-events-none mix-blend-multiply" />
+      <div className="absolute bottom-[0%] left-[20%] w-[800px] h-[500px] bg-cta/15 rounded-full blur-[150px] pointer-events-none mix-blend-multiply" />
+
       {/* Card */}
-      <div className="relative w-full max-w-sm animate-fade-in-up">
-        <div className="bg-bg-surface border border-border rounded-3xl p-8 shadow-card">
+      <div className="relative w-full max-w-md animate-fade-in-up z-10">
+        <div className="bg-white/60 backdrop-blur-2xl border border-white/50 rounded-[32px] p-10 shadow-[0_8px_32px_rgba(99,102,241,0.05)]">
 
           {/* Logo mark */}
           <div className="flex flex-col items-center mb-8">
-            <div className="h-12 w-12 rounded-2xl mb-5 overflow-hidden">
-              <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-cover" />
+            <div className="h-16 w-16 rounded-[20px] mb-5 overflow-hidden shadow-sm border border-white/60 bg-white">
+              <img src="/bot.png" alt="Agent47 Logo" className="h-full w-full object-contain" />
             </div>
-            <h1 className="text-xl font-semibold text-ink-primary tracking-tight">
-              Agent47
+            <h1 className="text-2xl font-bold text-ink-primary tracking-tight font-display">
+              Welcome to Agent47
             </h1>
-            <p className="mt-1 text-sm text-ink-secondary text-center">
-              Sign in with your Google Workspace to continue
+            <p className="mt-2 text-sm text-ink-secondary text-center font-medium">
+              Sign in with your Google Workspace to orchestrate your life.
             </p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-5">
             <div>
               <label
                 htmlFor="user-id"
-                className="block text-xs font-medium text-ink-secondary mb-1.5 uppercase tracking-wider"
+                className="block text-[11px] font-semibold text-ink-secondary mb-2 uppercase tracking-wider pl-1"
               >
                 Username
               </label>
@@ -129,10 +134,10 @@ export default function Login() {
                 placeholder="e.g. john.doe"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                className={error ? 'border-red-800 focus-visible:border-red-600' : ''}
+                className={`bg-white/80 backdrop-blur-md border-white/60 h-12 rounded-2xl ${error ? 'border-red-400 focus-visible:border-red-500' : 'focus-visible:border-accent/40'}`}
               />
               {error && (
-                <p className="mt-2 text-xs text-red-400 flex items-center gap-1">
+                <p className="mt-2 text-xs text-red-500 flex items-center gap-1.5 font-medium pl-1">
                   <span>⚠</span> {error}
                 </p>
               )}
@@ -140,7 +145,7 @@ export default function Login() {
 
             <Button
               type="submit"
-              className="w-full h-11 text-sm mt-2"
+              className="w-full h-12 text-[15px] font-semibold mt-4 rounded-2xl bg-accent hover:bg-accent-dim transition-colors shadow-sm"
               isLoading={isLoading}
             >
               Continue with Google Workspace
@@ -148,8 +153,8 @@ export default function Login() {
           </form>
 
           {/* Footer */}
-          <p className="mt-6 text-center text-xs text-ink-muted">
-            Your credentials are handled securely via OAuth 2.0
+          <p className="mt-8 text-center text-xs text-ink-muted font-medium">
+            Secured via OAuth 2.0. No passwords stored.
           </p>
         </div>
       </div>

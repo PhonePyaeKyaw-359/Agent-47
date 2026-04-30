@@ -46,6 +46,8 @@ def get_workspace_mcp_toolset(
 
     if tokens:
         env["WORKSPACE_ACCESS_TOKEN"] = tokens.get("access_token", "")
+        env["WORKSPACE_REFRESH_TOKEN"] = tokens.get("refresh_token", "") or ""
+        env["WORKSPACE_TOKEN_EXPIRY"] = str(tokens.get("expiry_date", 0) or 0)
         env["WORKSPACE_TOKEN_SCOPE"] = tokens.get("scope", "")
 
     toolset = MCPToolset(

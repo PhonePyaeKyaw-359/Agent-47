@@ -15,7 +15,7 @@ if [ ! -d ".venv" ]; then
 fi
 
 echo -e "${GREEN}Starting FastAPI backend on port 8000...${NC}"
-.venv/bin/python -m uvicorn backend.api:app --host 0.0.0.0 --port 8000 --env-file .env &
+.venv/bin/python -m uvicorn backend.api:app --host 0.0.0.0 --port 8000 --env-file backend/.env &
 BACKEND_PID=$!
 
 echo -e "${GREEN}Starting Vite frontend on port 5173...${NC}"

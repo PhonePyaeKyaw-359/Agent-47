@@ -9,16 +9,19 @@ Or via ADK's built-in server:
 """
 
 import asyncio
+import os
 import uuid
 import json
 import re
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -38,11 +41,361 @@ from .tools.user_auth import (
 )
 from .tools.time_tools import set_user_timezone
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env", override=False)
+load_dotenv(PROJECT_ROOT / "backend" / ".env", override=False)
+
 APP_NAME = "agent47"
 session_service = InMemorySessionService()
 
 # Per-user Runner cache  (user_id → Runner)
 _user_runners: dict[str, Runner] = {}
+
+
+def _validate_llm_environment() -> None:
+    """Ensure ADK uses the intended Gemini backend with a clear error."""
+    use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+    if use_vertex:
+        missing = [
+            name
+            for name in ("GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION")
+            if not os.getenv(name)
+        ]
+        if missing:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "llm_config_missing",
+                    "message": (
+                        "Vertex AI mode is enabled, but required environment "
+                        f"variables are missing: {', '.join(missing)}. "
+                        "Set them in backend/.env and restart the backend."
+                    ),
+                },
+            )
+        return
+
+    if not os.getenv("GOOGLE_API_KEY"):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "llm_config_missing",
+                "message": (
+                    "No Gemini API key was found and Vertex AI mode is not enabled. "
+                    "For this project, set GOOGLE_GENAI_USE_VERTEXAI=1, "
+                    "GOOGLE_CLOUD_PROJECT, and GOOGLE_CLOUD_LOCATION in backend/.env, "
+                    "then restart the backend."
+                ),
+            },
+        )
+
+
+def _extract_document_id(value: str) -> str:
+    """Extract a Google Doc ID from a URL or return the trimmed value."""
+    text = (value or "").strip()
+    match = re.search(r"/document/d/([a-zA-Z0-9_-]+)", text)
+    if match:
+        return match.group(1)
+    if re.fullmatch(r"[a-zA-Z0-9_-]{20,}", text):
+        return text
+    return ""
+
+
+def _is_google_doc_reference(value: str) -> bool:
+    text = (value or "").strip()
+    return bool(_extract_document_id(text)) and (
+        "docs.google.com" in text or re.fullmatch(r"[a-zA-Z0-9_-]{20,}", text)
+    )
+
+
+def _workspace_env(user_id: str, tokens: dict) -> dict:
+    """Environment for the Workspace MCP server, including refresh metadata."""
+    return {
+        **os.environ,
+        "WORKSPACE_USER_ID": user_id,
+        "WORKSPACE_ACCESS_TOKEN": tokens.get("access_token", ""),
+        "WORKSPACE_REFRESH_TOKEN": tokens.get("refresh_token", "") or "",
+        "WORKSPACE_TOKEN_EXPIRY": str(tokens.get("expiry_date", 0) or 0),
+        "WORKSPACE_TOKEN_SCOPE": tokens.get("scope", ""),
+        "WORKSPACE_ENABLE_LOGGING": "true",
+    }
+
+
+async def _call_workspace_tool(
+    user_id: str,
+    tokens: dict,
+    tool_name: str,
+    arguments: dict,
+) -> str:
+    """Call a Workspace MCP tool and raise if the tool returned an error JSON."""
+    from mcp.client.session import ClientSession
+    from mcp.client.stdio import StdioServerParameters, stdio_client
+
+    workspace_dist = (
+        PROJECT_ROOT / "workspace" / "workspace-server" / "dist" / "index.js"
+    )
+    server_params = StdioServerParameters(
+        command="node",
+        args=[str(workspace_dist), "--use-dot-names"],
+        env=_workspace_env(user_id, tokens),
+    )
+
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool(tool_name, arguments=arguments)
+
+    text = "\n".join(
+        item.text for item in result.content if getattr(item, "type", "") == "text"
+    )
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict) and parsed.get("error"):
+            raise RuntimeError(parsed["error"])
+    except json.JSONDecodeError:
+        pass
+    return text
+
+
+def _parse_docs_text(tool_text: str) -> str:
+    """Normalize docs.getText output, including multi-tab JSON output."""
+    try:
+        parsed = json.loads(tool_text)
+    except json.JSONDecodeError:
+        return tool_text.strip()
+
+    if isinstance(parsed, list):
+        return "\n\n".join(
+            str(tab.get("content", "")).strip()
+            for tab in parsed
+            if isinstance(tab, dict) and tab.get("content")
+        ).strip()
+    if isinstance(parsed, dict):
+        return str(parsed.get("content", "") or parsed.get("text", "")).strip()
+    return str(parsed).strip()
+
+
+def _fallback_document_plan(source_text: str, style: str, tone: str) -> dict:
+    """Create a usable document plan if the model response is not valid JSON."""
+    title = "Formatted Notes"
+    style_text = (style or "Report").strip()
+    tone_text = (tone or "Professional").strip()
+    cleaned = re.sub(r"\s+", " ", source_text).strip()
+    return {
+        "title": title,
+        "sections": [
+            {
+                "heading": "Overview",
+                "paragraphs": [
+                    f"These notes have been organized in a {tone_text.lower()} tone as a {style_text.lower()}."
+                ],
+                "bullets": [cleaned] if cleaned else [],
+            }
+        ],
+    }
+
+
+async def _build_document_plan(source_text: str, style: str, tone: str) -> dict:
+    """Use Gemini to turn messy text into structured JSON for Google Docs."""
+    from google import genai
+
+    _validate_llm_environment()
+    use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if use_vertex:
+        client = genai.Client(
+            vertexai=True,
+            project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+            location=os.getenv("GOOGLE_CLOUD_LOCATION"),
+        )
+    else:
+        client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+
+    prompt = f"""
+Rewrite the source text into a polished Google Doc plan.
+
+Return ONLY valid JSON with this schema:
+{{
+  "title": "Concise document title",
+  "sections": [
+    {{
+      "heading": "Section heading",
+      "paragraphs": ["Clear paragraph text"],
+      "bullets": ["Optional bullet text"]
+    }}
+  ]
+}}
+
+Requirements:
+- Style: {style or "Report"}
+- Tone: {tone or "Professional"}
+- Use a readable business-document structure, not a raw transcript.
+- Prefer these sections when the source supports them: Overview, Key Points, Decisions, Action Items, Next Steps.
+- Use 3 to 6 useful sections when possible.
+- Keep headings short and specific.
+- Keep paragraphs short, ideally 1 to 3 sentences each.
+- Put scan-friendly information in bullets; each bullet should be concise and meaningful.
+- For action items, start bullets with a strong label when known, such as "Owner:", "Due:", or "Next:".
+- Do not use Markdown syntax.
+- Do not invent facts not present in the source.
+
+Source text:
+{source_text}
+""".strip()
+
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={"response_mime_type": "application/json"},
+        )
+        plan = json.loads(response.text or "{}")
+        if not plan.get("title") or not isinstance(plan.get("sections"), list):
+            raise ValueError("Missing title or sections")
+        return plan
+    except Exception:
+        return _fallback_document_plan(source_text, style, tone)
+
+
+def _compose_doc_content_and_formats(plan: dict) -> tuple[str, list[dict]]:
+    """Build plain text plus Docs API format ranges."""
+    lines: list[str] = []
+    formats: list[dict] = []
+    current_index = 1
+
+    def add_line(text: str, styles: str | list[str] | None = None) -> None:
+        nonlocal current_index
+        clean = re.sub(r"\s+", " ", str(text or "")).strip()
+        if not clean:
+            lines.append("")
+            current_index += 1
+            return
+        start = current_index
+        lines.append(clean)
+        current_index += len(clean) + 1
+        if isinstance(styles, str):
+            styles = [styles]
+        for style in styles or []:
+            formats.append(
+                {"startIndex": start, "endIndex": start + len(clean), "style": style}
+            )
+
+    def add_paragraph(text: str) -> None:
+        clean = re.sub(r"\s+", " ", str(text or "")).strip()
+        add_line(clean, "bodySpacing")
+        label_match = re.match(r"^([A-Z][A-Za-z0-9 /&()'-]{1,40}:)", clean)
+        if label_match:
+            start = current_index - len(clean) - 1
+            formats.append(
+                {
+                    "startIndex": start,
+                    "endIndex": start + len(label_match.group(1)),
+                    "style": "bold",
+                }
+            )
+
+    add_line(plan.get("title") or "Formatted Notes", ["title", "titleSpacing"])
+    add_line("Formatted and structured from your notes", ["subtitle", "subtitleSpacing"])
+    add_line("")
+
+    for section in plan.get("sections", []):
+        if not isinstance(section, dict):
+            continue
+        heading = section.get("heading")
+        if heading:
+            add_line(heading, ["heading2", "sectionSpacing"])
+        for paragraph in section.get("paragraphs", []) or []:
+            add_paragraph(paragraph)
+        for bullet in section.get("bullets", []) or []:
+            add_line(bullet, ["bullet", "bulletSpacing"])
+        add_line("")
+
+    content = "\n".join(lines).strip() + "\n"
+    return content, formats
+
+
+async def _execute_format_document(user_id: str, tokens: dict, payload: dict) -> dict:
+    source_or_link = (payload.get("text_or_doc_link") or "").strip()
+    style = (payload.get("style") or "Report").strip()
+    tone = (payload.get("tone") or "Professional").strip()
+    action = str(payload.get("action") or "").lower()
+
+    if not source_or_link:
+        raise HTTPException(
+            status_code=400,
+            detail="Paste messy text or a Google Doc link before formatting.",
+        )
+
+    existing_doc_id = _extract_document_id(source_or_link)
+    should_update_existing = "clean" in action or "update" in action
+
+    if existing_doc_id and _is_google_doc_reference(source_or_link):
+        original_text = _parse_docs_text(
+            await _call_workspace_tool(
+                user_id,
+                tokens,
+                "docs.getText",
+                {"documentId": existing_doc_id},
+            )
+        )
+        target_doc_id = existing_doc_id
+    else:
+        original_text = source_or_link
+        target_doc_id = ""
+        should_update_existing = False
+
+    plan = await _build_document_plan(original_text, style, tone)
+    content, formats = _compose_doc_content_and_formats(plan)
+    title = str(plan.get("title") or "Formatted Notes").strip()
+
+    if should_update_existing and target_doc_id:
+        await _call_workspace_tool(
+            user_id,
+            tokens,
+            "docs.replaceText",
+            {
+                "documentId": target_doc_id,
+                "findText": original_text,
+                "replaceText": content,
+            },
+        )
+        document_id = target_doc_id
+    else:
+        create_text = await _call_workspace_tool(
+            user_id,
+            tokens,
+            "docs.create",
+            {"title": title, "content": content},
+        )
+        created = json.loads(create_text)
+        document_id = created["documentId"]
+        title = created.get("title") or title
+
+    if formats:
+        await _call_workspace_tool(
+            user_id,
+            tokens,
+            "docs.formatText",
+            {"documentId": document_id, "formats": formats},
+        )
+
+    return {
+        "result": (
+            f"Formatted document successfully with {len(formats)} rich-formatting "
+            f"change(s): [Open in Google Docs](https://docs.google.com/document/d/{document_id}/edit)"
+        ),
+        "document_id": document_id,
+        "title": title,
+        "format_count": len(formats),
+    }
 
 
 def _get_runner(user_id: str, tokens: Optional[dict] = None) -> Runner:
@@ -226,6 +579,7 @@ def _validate_summarize_payload(payload: dict) -> None:
 
 async def _run_user_agent_text(user_id: str, tokens: dict, prompt: str) -> str:
     """Run a one-shot prompt for a user and return final text response."""
+    _validate_llm_environment()
     runner = _get_runner(user_id, tokens=tokens)
     session_id = str(uuid.uuid4())
 
@@ -509,6 +863,7 @@ async def run(request: RunRequest):
         )
 
     # ── 2. Get per-user runner ──────────────────────────────────────
+    _validate_llm_environment()
     runner = _get_runner(user_id, tokens=tokens)
 
     session_id = request.session_id or str(uuid.uuid4())
@@ -611,3 +966,103 @@ async def delete_session(session_id: str, user_id: str = "default_user"):
         app_name=APP_NAME, user_id=user_id, session_id=session_id
     )
     return {"deleted": session_id}
+
+class ExecuteActionRequest(BaseModel):
+    intent: str
+    payload: dict
+    session_id: str = ""
+    user_id: str = "default_user"
+
+@app.post("/api/execute-action")
+async def execute_action(request: ExecuteActionRequest):
+    """
+    Deterministic Execution Endpoint.
+    Receives user-confirmed intent and payload, bypassing the conversational LLM 
+    for pure API calls where applicable.
+    """
+    user_id = request.user_id
+    tokens = get_user_tokens(user_id)
+    if tokens is None:
+        raise HTTPException(status_code=401, detail="Unauthenticated")
+        
+    try:
+        tokens = refresh_tokens_if_needed(user_id) or tokens
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+        
+    intent = request.intent
+    payload = request.payload
+    
+    # 1. Pure API Call Path (No AI)
+    if intent == "send_email":
+        from mcp.client.stdio import stdio_client, StdioServerParameters
+        from mcp.client.session import ClientSession
+        
+        _WORKSPACE_DIST = Path(__file__).resolve().parent.parent / "workspace" / "workspace-server" / "dist" / "index.js"
+        env = _workspace_env(user_id, tokens)
+        
+        server_params = StdioServerParameters(command="node", args=[str(_WORKSPACE_DIST), "--use-dot-names"], env=env)
+        try:
+            async with stdio_client(server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    # Directly invoke the gmail.send MCP tool
+                    mcp_args = {
+                        "to": payload.get("to", ""),
+                        "subject": payload.get("subject", ""),
+                        "body": payload.get("body", ""),
+                        "isHtml": True
+                    }
+                    if "cc" in payload and payload["cc"]:
+                        mcp_args["cc"] = payload["cc"]
+                    
+                    result = await session.call_tool("gmail.send", arguments=mcp_args)
+                    text_content = next((item.text for item in result.content if item.type == 'text'), str(result.content))
+                    return {"result": f"Email sent successfully!"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"API Execution failed: {str(e)}")
+
+    if intent == "do_format":
+        try:
+            return await _execute_format_document(user_id, tokens, payload)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Document formatting failed: {str(exc)}",
+            )
+            
+    # 2. Constrained AI Path (For generation/analysis intents)
+    else:
+        # For intents that intrinsically require AI (like summarizing, formatting, analyzing data),
+        # we route them through the Orchestrator but strictly command it to execute.
+        _validate_llm_environment()
+        runner = _get_runner(user_id, tokens=tokens)
+        session_id = request.session_id or str(uuid.uuid4())
+
+        existing = await session_service.get_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
+        if existing is None:
+            await session_service.create_session(
+                app_name=APP_NAME,
+                user_id=user_id,
+                session_id=session_id,
+            )
+        
+        payload_json = json.dumps({'intent': intent, 'payload': payload}, indent=2)
+        system_command = f"[SYSTEM: EXECUTE_INTENT]\n{payload_json}"
+        content = Content(role="user", parts=[Part(text=system_command)])
+        
+        final_response = ""
+        try:
+            async for event in runner.run_async(user_id=user_id, session_id=session_id, new_message=content):
+                if event.is_final_response() and event.content:
+                    for part in event.content.parts:
+                        if hasattr(part, "text") and part.text:
+                            final_response += part.text
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+            
+        return {"result": final_response}
