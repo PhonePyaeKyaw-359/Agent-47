@@ -276,6 +276,123 @@ def _attachment_kind_from_url(url: str) -> str:
     return "Link"
 
 
+def _workspace_url_from_file(file_id: str, mime_type: str, fallback_url: str) -> str:
+    """Return the best editor URL for a Google Workspace file."""
+    if mime_type == "application/vnd.google-apps.document":
+        return f"https://docs.google.com/document/d/{file_id}/edit"
+    if mime_type == "application/vnd.google-apps.presentation":
+        return f"https://docs.google.com/presentation/d/{file_id}/edit"
+    if mime_type == "application/vnd.google-apps.spreadsheet":
+        return f"https://docs.google.com/spreadsheets/d/{file_id}/edit"
+    return fallback_url
+
+
+async def _resolve_workspace_urls_from_text(
+    user_id: str,
+    tokens: dict,
+    text: str,
+) -> list[dict]:
+    """Extract Google URLs from prose and resolve generic Drive links when possible."""
+    urls = [
+        url for url in _extract_urls(text)
+        if "docs.google.com" in url or "drive.google.com" in url
+    ]
+    resolved: list[dict] = []
+
+    for url in urls:
+        mime_type = ""
+        resolved_url = url
+        try:
+            result_text = await _call_workspace_tool(
+                user_id,
+                tokens,
+                "drive.search",
+                {"query": url, "pageSize": 1},
+            )
+            parsed = json.loads(result_text)
+            files = parsed.get("files", parsed) if isinstance(parsed, dict) else parsed
+            if isinstance(files, list) and files:
+                file = files[0]
+                file_id = file.get("id") or ""
+                mime_type = file.get("mimeType") or ""
+                if file_id:
+                    resolved_url = _workspace_url_from_file(file_id, mime_type, url)
+        except Exception:
+            pass
+
+        if not mime_type:
+            if "/document/d/" in url:
+                mime_type = "application/vnd.google-apps.document"
+            elif "/presentation/d/" in url:
+                mime_type = "application/vnd.google-apps.presentation"
+            elif "/spreadsheets/d/" in url:
+                mime_type = "application/vnd.google-apps.spreadsheet"
+
+        resolved.append({"url": resolved_url, "original_url": url, "mimeType": mime_type})
+
+    return resolved
+
+
+def _looks_like_file_reference(value: str) -> bool:
+    """Heuristic for deciding if a parsed phrase is likely a Drive file name."""
+    text = re.sub(r"\s+", " ", value or "").strip()
+    if not text or "\n" in value or len(text) > 120:
+        return False
+    if " " not in text and "." not in text:
+        return False
+    return True
+
+
+async def _find_workspace_file_url_by_name(
+    user_id: str,
+    tokens: dict,
+    name_or_hint: str,
+    mime_type: str = "",
+) -> str:
+    """Search Drive for a named file and return the best URL match."""
+    query_text = re.sub(r"https?://\S+", " ", name_or_hint or "")
+    query_text = re.sub(r"\b(google|doc|docs|document|sheet|spreadsheet|slides|slide|deck|file|named|called)\b", " ", query_text, flags=re.I)
+    query_text = re.sub(r"\s+", " ", query_text).strip(" '\".,;:")
+    if not _looks_like_file_reference(query_text):
+        return ""
+
+    safe_query = query_text.replace("\\", "\\\\").replace("'", "\\'")
+    if mime_type:
+        drive_query = f"mimeType='{mime_type}' and trashed=false and name contains '{safe_query}'"
+    else:
+        drive_query = (
+            "("
+            "mimeType='application/vnd.google-apps.document' or "
+            "mimeType='application/vnd.google-apps.presentation' or "
+            "mimeType='application/vnd.google-apps.spreadsheet'"
+            f") and trashed=false and name contains '{safe_query}'"
+        )
+
+    try:
+        result_text = await _call_workspace_tool(
+            user_id,
+            tokens,
+            "drive.search",
+            {"query": drive_query, "pageSize": 1},
+        )
+        parsed = json.loads(result_text)
+        files = parsed.get("files", parsed) if isinstance(parsed, dict) else parsed
+        if isinstance(files, list) and files:
+            file = files[0]
+            file_id = file.get("id") or ""
+            found_mime_type = file.get("mimeType") or mime_type
+            if file_id:
+                return _workspace_url_from_file(
+                    file_id,
+                    found_mime_type,
+                    f"https://drive.google.com/file/d/{file_id}/view",
+                )
+    except Exception:
+        return ""
+
+    return ""
+
+
 async def _resolve_attachment_links(
     user_id: str,
     tokens: dict,
@@ -1703,7 +1820,7 @@ Requirements:
 @app.post("/api/parse-intent-payload")
 async def parse_intent_payload(request: ParseIntentPayloadRequest):
     """Parse a one-sentence user instruction into editable action fields."""
-    _get_and_refresh_tokens_or_401(request.user_id)
+    tokens = _get_and_refresh_tokens_or_401(request.user_id)
 
     intent = (request.intent or "").strip()
     text = (request.text or "").strip()
@@ -1721,16 +1838,16 @@ async def parse_intent_payload(request: ParseIntentPayloadRequest):
     intent_hints = {
         "send_email": (
             "Extract recipient emails, email type, tone, subject, body/message details, sender/from name, "
-            "and attachment/link mentions. If no exact recipient email is present, leave to blank."
+            "and attachment/link/file-name mentions. If no exact recipient email is present, leave to blank."
         ),
         "schedule_event": (
             "Extract event title, date, start time, duration, attendee emails, description/agenda, "
             "and whether the user asked for Google Meet."
         ),
-        "do_format": "Extract source text or Doc link, desired action, style, and tone.",
-        "execute_summary": "Extract Google Doc link, desired summary length, and focus.",
-        "summarize_slides": "Extract Google Slides link, desired summary style or length, and focus.",
-        "data_analysis": "Extract Google Sheet link and the analysis questions.",
+        "do_format": "Extract source text, Doc link, or mentioned Doc file name, desired action, style, and tone.",
+        "execute_summary": "Extract Google Doc link or mentioned Doc file name, desired summary length, and focus.",
+        "summarize_slides": "Extract Google Slides link or mentioned Slides deck name, desired summary style or length, and focus.",
+        "data_analysis": "Extract Google Sheet link or mentioned Sheet file name and the analysis questions.",
         "generate_docs": "Extract document title, content type, outline/request, depth, and tone.",
     }
 
@@ -1757,6 +1874,7 @@ Parsing guidance:
 - Fill only allowed fields.
 - Use empty string for unknown fields.
 - Do not invent emails, links, file IDs, dates, times, names, or facts.
+- If the user mentions a Google file by name without a URL, put that exact file name in the relevant file/link field so the server can search Drive.
 - Normalize obvious dates/times only when the user's wording is clear.
 - For yes/no fields, use "Yes" or "No".
 - For lists in a single field, use comma-separated plain text unless the template value is an array.
@@ -1798,6 +1916,81 @@ User sentence:
         elif not isinstance(value, (str, int, float, bool, list, dict)):
             value = str(value)
         cleaned_payload[key] = value
+
+    workspace_urls = await _resolve_workspace_urls_from_text(request.user_id, tokens, text)
+
+    def first_url_for(mime_type: str) -> str:
+        for item in workspace_urls:
+            if item.get("mimeType") == mime_type:
+                return item.get("url") or ""
+        return ""
+
+    def ensure_field_url(field: str, url: str) -> None:
+        if field in allowed_keys and url and not str(cleaned_payload.get(field) or "").strip():
+            cleaned_payload[field] = url
+
+    ensure_field_url("source_doc_link", first_url_for("application/vnd.google-apps.document"))
+    ensure_field_url("presentation_link", first_url_for("application/vnd.google-apps.presentation"))
+    ensure_field_url("sheet_link", first_url_for("application/vnd.google-apps.spreadsheet"))
+
+    file_field_mimes = {
+        "source_doc_link": "application/vnd.google-apps.document",
+        "presentation_link": "application/vnd.google-apps.presentation",
+        "sheet_link": "application/vnd.google-apps.spreadsheet",
+    }
+    for field, mime_type in file_field_mimes.items():
+        value = str(cleaned_payload.get(field) or "").strip()
+        if field in allowed_keys and value and not _extract_urls(value):
+            found_url = await _find_workspace_file_url_by_name(
+                request.user_id,
+                tokens,
+                value,
+                mime_type,
+            )
+            if found_url:
+                cleaned_payload[field] = found_url
+
+    if "text_or_doc_link" in allowed_keys and not str(cleaned_payload.get("text_or_doc_link") or "").strip():
+        ensure_field_url("text_or_doc_link", first_url_for("application/vnd.google-apps.document"))
+        if not str(cleaned_payload.get("text_or_doc_link") or "").strip() and workspace_urls:
+            cleaned_payload["text_or_doc_link"] = workspace_urls[0]["url"]
+    elif "text_or_doc_link" in allowed_keys:
+        value = str(cleaned_payload.get("text_or_doc_link") or "").strip()
+        if value and not _extract_urls(value):
+            found_url = await _find_workspace_file_url_by_name(
+                request.user_id,
+                tokens,
+                value,
+                "application/vnd.google-apps.document",
+            )
+            if found_url:
+                cleaned_payload["text_or_doc_link"] = found_url
+
+    if "attachment" in allowed_keys and workspace_urls:
+        existing_attachment = str(cleaned_payload.get("attachment") or "").strip()
+        extracted_links = [item["url"] for item in workspace_urls if item.get("url")]
+        if extracted_links:
+            cleaned_payload["attachment"] = "\n".join(
+                dict.fromkeys([link for link in [existing_attachment, *extracted_links] if link])
+            )
+    elif "attachment" in allowed_keys:
+        attachment = str(cleaned_payload.get("attachment") or "").strip()
+        if attachment and not _extract_urls(attachment):
+            found_url = await _find_workspace_file_url_by_name(
+                request.user_id,
+                tokens,
+                attachment,
+            )
+            if found_url:
+                cleaned_payload["attachment"] = found_url
+
+    if "description" in allowed_keys and intent == "schedule_event" and workspace_urls:
+        description = str(cleaned_payload.get("description") or "").strip()
+        links_text = "\n".join(item["url"] for item in workspace_urls if item.get("url"))
+        if links_text and links_text not in description:
+            cleaned_payload["description"] = (
+                f"{description}\n\nRelated file:\n{links_text}".strip()
+            )
 
     missing = parsed.get("missing", []) if isinstance(parsed, dict) else []
     if not isinstance(missing, list):

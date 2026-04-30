@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Loader2, Inbox, Send, MessageSquare, Mic, MicOff, Trash2, Mail, Calendar, CreditCard, Wand2, Search, Presentation, ListChecks, FileSpreadsheet, Bot } from 'lucide-react';
+import { LogOut, Loader2, Send, MessageSquare, Mic, MicOff, Trash2, Mail, Calendar, Wand2, Search, Presentation, FileSpreadsheet } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { chatService, authService, WS_BASE_URL } from '../services/api';
 import { ChatBubble } from '../components/ChatBubble';
@@ -287,7 +287,7 @@ export default function Chat() {
         
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-[18px] border-b border-hairline">
-          <Bot className="w-5 h-5 text-ink" />
+          <img src="/bot.png" alt="Agent47" className="w-8 h-8 object-contain" />
           <span className="text-[17px] font-semibold tracking-[-0.01em] text-ink font-display">Agent47</span>
         </div>
 
@@ -362,7 +362,7 @@ export default function Chat() {
         {/* Mobile Header */}
         <header className="md:hidden flex items-center justify-between px-4 h-[52px] border-b border-hairline bg-canvas z-20">
           <div className="flex items-center gap-2.5">
-            <Bot className="w-5 h-5 text-ink" />
+            <img src="/bot.png" alt="Agent47" className="w-8 h-8 object-contain" />
             <span className="text-[17px] font-semibold tracking-[-0.01em] font-display text-ink">Agent47</span>
           </div>
           <button onClick={handleLogout} className="p-1.5 text-ink hover:bg-black/5 rounded-[8px]">
@@ -374,7 +374,7 @@ export default function Chat() {
           {chatHistory.length === 0 ? (
             <div className="flex flex-col items-center text-center px-4 animate-fade-in-up pb-[10vh] pt-[10vh]">
               <div className="h-20 w-20 bg-canvas-parchment rounded-full flex items-center justify-center mb-6">
-                <Bot className="w-10 h-10 text-ink" />
+                <img src="/bot.png" alt="Agent47" className="w-16 h-16 object-contain" />
               </div>
               <h2 className="text-[34px] font-semibold text-ink mb-3 tracking-display font-display">
                 How can I help you today?
@@ -441,7 +441,7 @@ export default function Chat() {
               {isSending && (
                 <div className="flex items-end gap-2.5 mb-5 animate-fade-in-up w-full justify-start">
                   <div className="flex-shrink-0 h-7 w-7 rounded-full bg-canvas-parchment flex items-center justify-center border border-hairline mb-1">
-                    <Bot className="h-[15px] w-[15px] text-ink-muted-80" />
+                    <img src="/bot.png" alt="Agent47" className="h-6 w-6 object-contain" />
                   </div>
                   <div className="flex items-center gap-1 py-2 px-1">
                     <span className="typing-dot" />

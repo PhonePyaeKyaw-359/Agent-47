@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Mail, Calendar, FileText, Brain, Mic, Shield, Bot } from 'lucide-react';
+import { ArrowRight, Mail, Calendar, FileText, Brain } from 'lucide-react';
 import { Button } from '../components/Button';
 
 export default function Landing() {
@@ -21,7 +21,7 @@ export default function Landing() {
       <div className="fixed top-0 left-0 right-0 w-full z-50 bg-surface-black h-[44px] flex items-center justify-center">
         <nav className="w-full max-w-5xl mx-auto px-4 flex items-center justify-between">
           <div className="flex items-center gap-2 cursor-pointer text-body-on-dark hover:opacity-80 transition-opacity">
-            <Bot className="w-[14px] h-[14px]" />
+            <img src="/bot.png" alt="Agent47" className="w-[18px] h-[18px] object-contain" />
           </div>
           <div className="flex items-center gap-8 text-[12px] text-body-on-dark tracking-[-0.01em]">
             <Link to="/api-docs" className="hover:opacity-80 transition-opacity hidden md:block">API Docs</Link>
@@ -151,7 +151,7 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto px-4 flex flex-col items-center md:items-start">
           <div className="w-full flex flex-col md:flex-row items-center justify-between pb-8 border-b border-hairline mb-4">
             <div className="flex items-center gap-2 font-semibold text-ink-muted-80 mb-4 md:mb-0">
-               <Bot className="w-4 h-4" /> Agent47
+               <img src="/bot.png" alt="Agent47" className="w-5 h-5 object-contain" /> Agent47
             </div>
             <div className="flex gap-4">
               <Link to="/api-docs" className="hover:text-ink-muted-80 transition-colors">API Docs</Link>

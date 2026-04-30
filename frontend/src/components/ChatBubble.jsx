@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '../lib/utils';
 import { IntentBlockRenderer } from './IntentBlockRenderer';
-import { Bot, ChevronDown, ChevronRight, Zap, CheckCircle2, XCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Zap, CheckCircle2, XCircle } from 'lucide-react';
 
 /* Markdown component overrides */
 const mdComponents = {
@@ -236,7 +236,7 @@ export function ChatBubble({ message, isUser, isError, steps, onExecuteIntent })
           {/* AI Avatar */}
           {!isUser && (
             <div className="flex-shrink-0 h-8 w-8 rounded-[10px] bg-canvas-parchment flex items-center justify-center mr-3 mt-1 border border-hairline">
-              <Bot className="h-[16px] w-[16px] text-ink-muted-80" />
+              <img src="/bot.png" alt="Agent47" className="h-6 w-6 object-contain" />
             </div>
           )}
 
