@@ -119,8 +119,14 @@ const fieldChoices = {
   tone: ['Professional', 'Friendly', 'Casual', 'Academic', 'Formal'],
   content_type: ['Follow-up', 'Cold outreach', 'Update', 'Invitation', 'Thank you', 'Proposal', 'Report', 'Guide'],
   content_depth: ['Brief overview', 'Detailed', 'Exhaustive'],
-  length: ['Executive summary', 'Slide-by-slide', 'Key takeaways', 'Action items', '1 paragraph', '3 bullets', '5 bullets', 'Half page', '1 page'],
+  length: ['1 paragraph', '3 bullets', '5 bullets', 'Half page', '1 page'],
   add_google_meet: ['No', 'Yes'],
+};
+
+const intentFieldChoices = {
+  summarize_slides: {
+    length: ['Executive summary', 'Slide-by-slide', 'Key takeaways', 'Action items'],
+  },
 };
 
 const emailDraftPlaceholders = new Set([
@@ -135,7 +141,6 @@ const isEmailDraftPlaceholder = (value) => (
 const canAutoDraftEmailBody = (data, status) => (
   Boolean(data.subject?.trim())
   && !['edited', 'confirmed'].includes(status.body)
-  && (!data.body?.trim() || isEmailDraftPlaceholder(data.body))
 );
 
 const naturalExamples = {
@@ -492,7 +497,7 @@ export function IntentBlockRenderer({ intentData, onExecute }) {
     const filePicker = filePickerConfig[key];
     const isFilePickerField = Boolean(filePicker);
     const isEmailField = key === 'to' || key === 'cc' || key === 'sender';
-    const choices = fieldChoices[key] || null;
+    const choices = intentFieldChoices[intent]?.[key] || fieldChoices[key] || null;
     const isOptional = optionalFields.has(key);
 
     const value = formData[key];
